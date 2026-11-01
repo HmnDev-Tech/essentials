@@ -5,6 +5,7 @@ on:
     branches:
       - develop
       - main
+      - dev
     paths:
       - 'app/**'
       - 'stub/**'
@@ -17,6 +18,8 @@ on:
   push:
     branches:
       - develop
+      - main
+      - dev
     paths:
       - 'app/**'
       - 'stub/**'
