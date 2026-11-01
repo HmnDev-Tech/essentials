@@ -4527,7 +4527,7 @@ class MainViewModel : ViewModel() {
         context: Context,
         enabled: Boolean,
     ) {
-        val value = if (enabled) "com.sameerasw.essentials" else null
+        val value = if (enabled) context.packageName else null
         val key = "selected_search_engine"
 
         var success = false

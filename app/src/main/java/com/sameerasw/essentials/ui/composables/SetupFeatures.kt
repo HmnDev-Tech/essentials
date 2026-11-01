@@ -194,7 +194,7 @@ fun SetupFeatures(
                                 actionLabel = R.string.perm_action_copy_adb,
                                 action = {
                                     val adbCommand =
-                                        "adb shell pm grant com.sameerasw.essentials android.permission.WRITE_SECURE_SETTINGS"
+                                        "adb shell pm grant ${context.packageName} android.permission.WRITE_SECURE_SETTINGS"
                                     val clipboard =
                                         context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                     val clip = ClipData.newPlainText("adb_command", adbCommand)
@@ -568,7 +568,7 @@ fun SetupFeatures(
                             actionLabel = R.string.perm_action_copy_adb,
                             action = {
                                 val adbCommand =
-                                    "adb shell pm grant com.sameerasw.essentials android.permission.WRITE_SECURE_SETTINGS"
+                                    "adb shell pm grant ${context.packageName} android.permission.WRITE_SECURE_SETTINGS"
                                 val clipboard =
                                     context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                 val clip = ClipData.newPlainText("adb_command", adbCommand)

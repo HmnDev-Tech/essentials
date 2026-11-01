@@ -17,6 +17,6 @@ class ExampleInstrumentedTest {
     fun useAppContext() {
         // Context of the app under test.
         val appContext = InstrumentationRegistry.getInstrumentation().targetContext
-        assertEquals("com.sameerasw.essentials", appContext.packageName)
+        assertEquals("io.essentials.hmncat", appContext.packageName)
     }
 }

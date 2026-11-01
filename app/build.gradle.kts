@@ -112,7 +112,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.sameerasw.essentials"
+        applicationId = "io.essentials.hmncat"
         minSdk = 26
         targetSdk = 37
         versionCode = 71

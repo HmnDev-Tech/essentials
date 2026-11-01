@@ -472,7 +472,7 @@ class StatusBarIconViewModel : ViewModel() {
      * Executes the get adb command operation.
      * @return The resulting String data.
      */
-    fun getAdbCommand(): String = "adb shell pm grant com.sameerasw.essentials android.permission.WRITE_SECURE_SETTINGS"
+    fun getAdbCommand(): String = "adb shell pm grant ${com.sameerasw.essentials.EssentialsApp.context.packageName} android.permission.WRITE_SECURE_SETTINGS"
 
     override fun onCleared() {
         super.onCleared()

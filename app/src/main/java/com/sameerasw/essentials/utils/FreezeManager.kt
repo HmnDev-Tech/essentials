@@ -536,7 +536,7 @@ object FreezeManager {
         }
     }
 
-    private fun getSuspenderPackage(): String = if (Shizuku.getUid() == 0) "com.sameerasw.essentials" else "com.android.shell"
+    private fun getSuspenderPackage(): String = if (Shizuku.getUid() == 0) context.packageName else "com.android.shell"
 
     private fun getUserId(): Int =
         try {

@@ -168,7 +168,7 @@ fun WatchInstallHelpBottomSheet(
             AdbCommandCard(
                 title = "Write Secure Settings",
                 description = "Required on the watch to toggle Wireless Debugging remotely.",
-                command = "adb shell pm grant com.sameerasw.essentials android.permission.WRITE_SECURE_SETTINGS",
+                command = "adb shell pm grant ${context.packageName} android.permission.WRITE_SECURE_SETTINGS",
                 context = context,
                 view = view,
             )
@@ -177,7 +177,7 @@ fun WatchInstallHelpBottomSheet(
             AdbCommandCard(
                 title = "Do Not Disturb (DND) Access",
                 description = "Required on the watch for DND / Silent sync modes.",
-                command = "adb shell cmd notification allow_dnd com.sameerasw.essentials",
+                command = "adb shell cmd notification allow_dnd ${context.packageName}",
                 context = context,
                 view = view,
             )

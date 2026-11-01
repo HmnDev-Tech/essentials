@@ -1,6 +1,6 @@
 {
   "app_name": "Essentials",
-  "package_name": "com.sameerasw.essentials",
+  "package_name": "io.essentials.hmncat",
   "short_description": "Essential tools and mods for Android nerds",
   "icon_url": "https://github.com/sameerasw/essentials/blob/main/fastlane/metadata/android/en-US/images/icon.png?raw=true",
   "banner_url": "https://github.com/user-attachments/assets/c0849951-4cf0-4a91-9964-f7c212977af1",

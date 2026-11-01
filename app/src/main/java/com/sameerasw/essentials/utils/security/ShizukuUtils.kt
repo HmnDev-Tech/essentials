@@ -13,6 +13,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.IBinder
 import android.os.RemoteException
+import com.sameerasw.essentials.EssentialsApp
 import moe.shizuku.server.IShizukuService
 import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuProvider
@@ -150,7 +151,8 @@ object ShizukuUtils {
         if (!hasPermission() || !isBinderAlive) return false
 
         return try {
-            runCommand("pm grant com.sameerasw.essentials android.permission.WRITE_SECURE_SETTINGS")
+            val pkg = EssentialsApp.context.packageName
+            runCommand("pm grant $pkg android.permission.WRITE_SECURE_SETTINGS")
             true
         } catch (
             @Suppress("UNUSED_PARAMETER") e: Exception,
@@ -163,7 +165,8 @@ object ShizukuUtils {
         if (!hasPermission() || !isBinderAlive) return false
 
         return try {
-            runCommand("pm grant com.sameerasw.essentials android.permission.BATTERY_STATS")
+            val pkg = EssentialsApp.context.packageName
+            runCommand("pm grant $pkg android.permission.BATTERY_STATS")
             true
         } catch (
             @Suppress("UNUSED_PARAMETER") e: Exception,

@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Configuration
-RELEASE_PKG="com.sameerasw.essentials"
-DEBUG_PKG="com.sameerasw.essentials.debug"
+RELEASE_PKG="io.essentials.hmncat"
+DEBUG_PKG="io.essentials.hmncat.debug"
 
 # Function to grant permissions to a specific package
 grant_permissions() {

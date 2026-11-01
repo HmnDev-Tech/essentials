@@ -101,7 +101,8 @@ object SheveryUtils {
     fun grantWriteSecureSettingsPermission(): Boolean {
         if (!hasPermission() || !isSheveryAvailable()) return false
         return try {
-            runCommand("pm grant com.sameerasw.essentials android.permission.WRITE_SECURE_SETTINGS")
+            val pkg = EssentialsApp.context.packageName
+            runCommand("pm grant $pkg android.permission.WRITE_SECURE_SETTINGS")
             true
         } catch (_: Throwable) {
             false
@@ -111,7 +112,8 @@ object SheveryUtils {
     fun grantBatteryStatsPermission(): Boolean {
         if (!hasPermission() || !isSheveryAvailable()) return false
         return try {
-            runCommand("pm grant com.sameerasw.essentials android.permission.BATTERY_STATS")
+            val pkg = EssentialsApp.context.packageName
+            runCommand("pm grant $pkg android.permission.BATTERY_STATS")
             true
         } catch (_: Throwable) {
             false

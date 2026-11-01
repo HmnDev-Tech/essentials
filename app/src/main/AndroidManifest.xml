@@ -80,17 +80,17 @@
     <uses-permission android:name="com.sameerasw.permission.ESSENTIALS_AIRSYNC_BRIDGE" />
 
     <permission-group
-        android:name="com.sameerasw.essentials.permission-group.EXTERNAL_CONTROL"
+        android:name="${applicationId}.permission-group.EXTERNAL_CONTROL"
         android:description="@string/perm_external_control_desc"
         android:icon="@drawable/app_logo"
         android:label="@string/perm_external_control_label" />
 
     <permission
-        android:name="com.sameerasw.essentials.permission.EXTERNAL_CONTROL"
+        android:name="${applicationId}.permission.EXTERNAL_CONTROL"
         android:description="@string/perm_external_control_desc"
         android:icon="@drawable/app_logo"
         android:label="@string/perm_external_control_label"
-        android:permissionGroup="com.sameerasw.essentials.permission-group.EXTERNAL_CONTROL"
+        android:permissionGroup="${applicationId}.permission-group.EXTERNAL_CONTROL"
         android:protectionLevel="dangerous" />
 
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
@@ -1732,7 +1732,7 @@
             android:name=".external.ExternalControlProvider"
             android:authorities="${applicationId}.external"
             android:exported="true"
-            android:permission="com.sameerasw.essentials.permission.EXTERNAL_CONTROL" />
+            android:permission="${applicationId}.permission.EXTERNAL_CONTROL" />
 
         <receiver
             android:name=".external.ExternalTokenActionReceiver"
@@ -1741,7 +1741,7 @@
         <receiver
             android:name=".external.ExternalActionReceiver"
             android:exported="true"
-            android:permission="com.sameerasw.essentials.permission.EXTERNAL_CONTROL">
+            android:permission="${applicationId}.permission.EXTERNAL_CONTROL">
             <intent-filter>
                 <action android:name="com.sameerasw.essentials.action.EXTERNAL_CONTROL" />
             </intent-filter>
