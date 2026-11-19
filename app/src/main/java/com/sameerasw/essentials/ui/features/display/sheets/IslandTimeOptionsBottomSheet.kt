@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,6 +35,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.sameerasw.essentials.R
 import com.sameerasw.essentials.data.repository.SettingsRepository
+import com.sameerasw.essentials.translation.TranslatableText
 import com.sameerasw.essentials.ui.components.menus.SegmentedDropdownMenuItem
 import com.sameerasw.essentials.ui.core.cards.ConfigPickerItem
 import com.sameerasw.essentials.ui.core.cards.IconToggleItem
@@ -156,6 +156,14 @@ fun IslandTimeOptionsBottomSheet(
                     )
                 }
             }
+            RoundedCardContainer(spacing = 2.dp, cornerRadius = 24.dp) {
+                IslandPrefToggle(
+                    settingKey = SettingsRepository.KEY_ISLAND_TIME_TAP_OPENS_CLOCK,
+                    iconRes = R.drawable.rounded_alarm_24,
+                    title = stringResource(R.string.island_time_tap_opens_clock_title),
+                    defaultValue = false,
+                )
+            }
             IslandLauncherOnlyToggle(SettingsRepository.KEY_ISLAND_TIME_BATTERY_LAUNCHER_ONLY)
             if (rememberIslandShowsWhileLocked()) {
                 RoundedCardContainer(spacing = 2.dp, cornerRadius = 24.dp) {
@@ -206,14 +214,14 @@ fun IslandBatteryOptions(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 SegmentedDropdownMenuItem(
-                    text = { Text(stringResource(R.string.island_battery_style_ring)) },
+                    text = { TranslatableText(R.string.island_battery_style_ring) },
                     onClick = {
                         HapticUtil.performVirtualKeyHaptic(view)
                         setStyle(SettingsRepository.ISLAND_BATTERY_STYLE_RING)
                     },
                 )
                 SegmentedDropdownMenuItem(
-                    text = { Text(stringResource(R.string.island_battery_style_icon)) },
+                    text = { TranslatableText(R.string.island_battery_style_icon) },
                     onClick = {
                         HapticUtil.performVirtualKeyHaptic(view)
                         setStyle(SettingsRepository.ISLAND_BATTERY_STYLE_ICON)

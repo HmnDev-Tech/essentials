@@ -1,7 +1,5 @@
 package com.sameerasw.essentials.island.plugins.call
 
-import com.sameerasw.essentials.island.ui.components.ArtworkBackdrop
-import androidx.compose.ui.graphics.asImageBitmap
 import android.graphics.Bitmap
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -59,11 +57,9 @@ fun CallExpanded(
 ) {
     val spec = scope.spec
     val sidePadding = spec.expandedPadding + spec.expandedCorner * 0.35f
-    val on = remember(buttons.map { it.key }) { mutableStateListOf(*buttons.map { it.initialOn }.toTypedArray()) }
+    val on = remember(buttons.map { it.key to it.initialOn }) { mutableStateListOf(*buttons.map { it.initialOn }.toTypedArray()) }
 
-    val image = remember(photo) { photo?.asImageBitmap() }
     Box(propagateMinConstraints = true) {
-        scope.ArtworkBackdrop(image, Modifier.matchParentSize())
         Column(
             modifier = Modifier.fillMaxWidth().padding(spec.expandedOutset),
             verticalArrangement = Arrangement.SpaceBetween,
@@ -71,14 +67,13 @@ fun CallExpanded(
             Column {
                 Spacer(Modifier.height(spec.expandedTopPadding))
                 scope.CameraRow(
-                    horizontalPadding = spec.cameraGap + spec.expandedCorner * 0.35f,
+                    title = caller,
                     start = {
                         IslandBitmap(photo, spec.cellSize, circle = true, fallbackRes = R.drawable.rounded_call_24)
-                        MarqueeText(text = caller, style = IslandTextStyles.title, modifier = Modifier.weight(1f))
                     },
                     end = {
                         if (ringing) {
-                            Text(status, style = IslandTextStyles.body, maxLines = 1)
+                            Text(status, style = IslandTextStyles.body, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         } else {
                             RollingText(status)
                         }
@@ -96,27 +91,29 @@ fun CallExpanded(
                 }
             }
             Column {
-                Spacer(Modifier.height(14.dp))
-                val items = buttons.mapIndexed { index, spec ->
-                    val container = when (spec.style) {
-                        CallButtonStyle.Answer -> AnswerGreen
-                        CallButtonStyle.End -> EndRed
-                        CallButtonStyle.Neutral -> if (on.getOrElse(index) { false }) Color.White.copy(alpha = 0.4f) else null
+                if (buttons.isNotEmpty()) {
+                    Spacer(Modifier.height(14.dp))
+                    val items = buttons.mapIndexed { index, spec ->
+                        val container = when (spec.style) {
+                            CallButtonStyle.Answer -> AnswerGreen
+                            CallButtonStyle.End -> EndRed
+                            CallButtonStyle.Neutral -> if (on.getOrElse(index) { false }) Color.White.copy(alpha = 0.4f) else null
+                        }
+                        ConnectedItem(
+                            onClick = { spec.onClick()?.let { if (index < on.size) on[index] = it } },
+                            container = container,
+                        ) {
+                            val icon = if (on.getOrElse(index) { false }) spec.onIcon ?: spec.icon else spec.icon
+                            CallButton(icon, spec.label)
+                        }
                     }
-                    ConnectedItem(
-                        onClick = { spec.onClick()?.let { if (index < on.size) on[index] = it } },
-                        container = container,
-                    ) {
-                        val icon = if (on.getOrElse(index) { false }) spec.onIcon ?: spec.icon else spec.icon
-                        CallButton(icon, spec.label)
-                    }
+                    ConnectedButtonRow(
+                        height = 44.dp,
+                        modifier = Modifier.padding(horizontal = sidePadding),
+                        container = Color.White.copy(alpha = 0.2f),
+                        items = items,
+                    )
                 }
-                ConnectedButtonRow(
-                    height = 44.dp,
-                    modifier = Modifier.padding(horizontal = sidePadding),
-                    container = Color.White.copy(alpha = 0.2f),
-                    items = items,
-                )
                 Spacer(Modifier.height(spec.expandedBottomPadding))
             }
         }

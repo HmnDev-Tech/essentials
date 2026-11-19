@@ -45,7 +45,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -66,13 +65,13 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.sameerasw.essentials.R
 import com.sameerasw.essentials.data.repository.SettingsRepository
 import com.sameerasw.essentials.island.ui.components.EqualizerBars
+import com.sameerasw.essentials.translation.TranslatableText
 import com.sameerasw.essentials.ui.core.sheets.EssentialsBottomSheet
 import com.sameerasw.essentials.ui.theme.EssentialsTheme
 import com.sameerasw.essentials.utils.AppUtil
@@ -121,15 +120,16 @@ private fun NowPlayingSheet(onDismiss: () -> Unit) {
     val settings = remember { SettingsRepository(context) }
     val playing by AppVolumeController.playingPackages.collectAsState()
     val levels = remember { mutableStateMapOf<String, Float>().apply { putAll(settings.getAppVolumeLevels()) } }
+    val openedWith = remember { AppVolumeController.recentPackages() }
     val rows =
         remember {
             mutableStateListOf<PlayerRow>().apply {
-                AppVolumeController.playingPackages.value.forEach { add(PlayerRow(it, isInitial = true)) }
+                openedWith.forEach { add(PlayerRow(it, isInitial = true)) }
             }
         }
 
     LaunchedEffect(playing) {
-        rows.forEach { it.isPresent = it.packageName in playing }
+        rows.forEach { it.isPresent = it.packageName in playing || it.packageName in openedWith }
         playing.forEach { packageName ->
             if (rows.none { it.packageName == packageName && it.isPresent }) rows.add(PlayerRow(packageName))
         }
@@ -156,8 +156,8 @@ private fun NowPlayingSheet(onDismiss: () -> Unit) {
                     color = MaterialTheme.colorScheme.primary,
                     size = 18.dp,
                 )
-                Text(
-                    text = stringResource(R.string.app_volume_overlay_sheet_title),
+                TranslatableText(
+                    stringResId = R.string.app_volume_overlay_sheet_title,
                     style = MaterialTheme.typography.titleMedium,
                 )
             }
@@ -166,8 +166,8 @@ private fun NowPlayingSheet(onDismiss: () -> Unit) {
                 enter = expandVertically(spring(stiffness = Spring.StiffnessLow)) + fadeIn(tween(ENTER_MS)),
                 exit = shrinkVertically(tween(EXIT_MS)) + fadeOut(tween(EXIT_MS)),
             ) {
-                Text(
-                    text = stringResource(R.string.app_volume_overlay_empty),
+                TranslatableText(
+                    stringResId = R.string.app_volume_overlay_empty,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),

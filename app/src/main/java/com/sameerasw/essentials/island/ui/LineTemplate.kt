@@ -62,29 +62,29 @@ fun LineTemplate(
         return
     }
     val leadingSlot: @Composable () -> Unit = { LeadingSlot(leading, spec) }
-    val textEndInset = if (line.endSlot == null && spec.growDirection >= 0) spec.compactHeight * OPTICAL_INSET_RATIO else 0.dp
+    val textEndInset = if (line.endSlot == null && spec.growDirection >= 0) spec.edgeInset else 0.dp
     Row(
         modifier = Modifier
             .width(spec.lineWidth - startInset - endInset)
             .height(spec.compactHeight)
-            .padding(start = spec.cameraGap, end = spec.cameraGap + textEndInset),
+            .padding(start = spec.contentGap, end = spec.contentGap + textEndInset),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val icon: @Composable () -> Unit = {
-            Box(Modifier.squareFit(spec.cellSize), contentAlignment = Alignment.Center) { line.icon() }
+            Box(Modifier.squareFit(spec.cellSize).morphTag(IslandMorph.ICON), contentAlignment = Alignment.Center) { line.icon() }
         }
         val endSlot: @Composable () -> Unit = {
             line.endSlot?.let { slot -> Box(Modifier.squareFit(spec.cellSize), contentAlignment = Alignment.Center) { slot() } }
         }
         if (spec.growDirection == 0) {
             Row(
-                modifier = Modifier.width((spec.lineWidth - spec.cameraSlotWidth) / 2 - spec.cameraGap - startInset),
+                modifier = Modifier.width((spec.lineWidth - spec.cameraSlotWidth) / 2 - spec.contentGap - startInset),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(spec.cellSpacing),
             ) {
                 leadingSlot()
                 if (line.showLeftIcon) icon()
-                LineText(line.start, TextAlign.Start, FontWeight.SemiBold, Modifier.weight(1f))
+                LineText(line.start, TextAlign.Start, FontWeight.SemiBold, Modifier.weight(1f).morphTag(IslandMorph.TITLE))
             }
             Spacer(Modifier.width(spec.cameraSlotWidth))
             Row(
@@ -92,11 +92,11 @@ fun LineTemplate(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(spec.cellSpacing),
             ) {
-                LineText(line.end, TextAlign.End, FontWeight.Normal, Modifier.weight(1f))
+                LineText(line.end, TextAlign.End, FontWeight.Normal, Modifier.weight(1f).morphTag(IslandMorph.END))
                 endSlot()
             }
         } else {
-            if (spec.growDirection > 0) Spacer(Modifier.width((spec.cameraSlotWidth - spec.cameraGap).coerceAtLeast(0.dp)))
+            if (spec.growDirection > 0) Spacer(Modifier.width((spec.cameraSlotWidth - spec.contentGap).coerceAtLeast(0.dp)))
             Row(
                 modifier = Modifier.weight(1f),
                 verticalAlignment = Alignment.CenterVertically,
@@ -108,11 +108,12 @@ fun LineTemplate(
                     text = mergedLineText(line),
                     style = IslandTextStyles.line,
                     textAlign = TextAlign.Start,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).morphTag(IslandMorph.TITLE),
+                    reportProgress = true,
                 )
                 endSlot()
             }
-            if (spec.growDirection < 0) Spacer(Modifier.width((spec.cameraSlotWidth - spec.cameraGap).coerceAtLeast(0.dp)))
+            if (spec.growDirection < 0) Spacer(Modifier.width((spec.cameraSlotWidth - spec.contentGap).coerceAtLeast(0.dp)))
         }
     }
 }
@@ -138,16 +139,16 @@ private fun CondensedLine(line: LineContent, spec: IslandLayoutSpec, startInset:
     }
     val natural = with(LocalDensity.current) { (naturalPx + 1).toDp() }
     val icon: @Composable () -> Unit = {
-        Box(Modifier.squareFit(spec.cellSize), contentAlignment = Alignment.Center) { line.icon() }
+        Box(Modifier.squareFit(spec.cellSize).morphTag(IslandMorph.ICON), contentAlignment = Alignment.Center) { line.icon() }
     }
     val title: @Composable (Dp) -> Unit = { width ->
-        MarqueeText(text = line.start, style = style, textAlign = TextAlign.Start, modifier = Modifier.width(width))
+        MarqueeText(text = line.start, style = style, textAlign = TextAlign.Start, modifier = Modifier.width(width).morphTag(IslandMorph.TITLE), reportProgress = true)
     }
     val leadingSlot: @Composable () -> Unit = { LeadingSlot(leading, spec) }
     val leadingWidth = leading?.let { it.width + spec.cellSpacing } ?: 0.dp
 
     if (spec.growDirection == 0) {
-        val edgePad = spec.cameraGap + spec.compactHeight * OPTICAL_INSET_RATIO
+        val edgePad = spec.contentGap + spec.edgeInset
         val titleWidth = condensedTitleWidth(
             natural = natural,
             lineWidth = spec.lineWidth,
@@ -176,21 +177,21 @@ private fun CondensedLine(line: LineContent, spec: IslandLayoutSpec, startInset:
             ) { title(titleWidth) }
         }
     } else {
-        val opticalInset = if (spec.growDirection > 0) spec.compactHeight * OPTICAL_INSET_RATIO else 0.dp
-        val fixed = spec.cameraGap + opticalInset + spec.cameraSlotWidth + spec.cellSize + spec.cellSpacing * 2 + leadingWidth
+        val opticalInset = if (spec.growDirection > 0) spec.edgeInset else 0.dp
+        val fixed = spec.contentGap + opticalInset + spec.cameraSlotWidth + spec.cellSize + spec.cellSpacing * 2 + leadingWidth
         val maxText = (spec.lineWidth - startInset - endInset - fixed).coerceAtLeast(0.dp)
         Row(
             modifier = Modifier
                 .height(spec.compactHeight)
-                .padding(start = spec.cameraGap, end = spec.cameraGap + opticalInset),
+                .padding(start = spec.contentGap, end = spec.contentGap + opticalInset),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(spec.cellSpacing),
         ) {
-            if (spec.growDirection > 0) Spacer(Modifier.width((spec.cameraSlotWidth - spec.cameraGap).coerceAtLeast(0.dp)))
+            if (spec.growDirection > 0) Spacer(Modifier.width((spec.cameraSlotWidth - spec.contentGap).coerceAtLeast(0.dp)))
             leadingSlot()
             icon()
             title(natural.coerceAtMost(maxText))
-            if (spec.growDirection < 0) Spacer(Modifier.width((spec.cameraSlotWidth - spec.cameraGap).coerceAtLeast(0.dp)))
+            if (spec.growDirection < 0) Spacer(Modifier.width((spec.cameraSlotWidth - spec.contentGap).coerceAtLeast(0.dp)))
         }
     }
 }
@@ -223,7 +224,7 @@ private fun mergedLineText(line: LineContent): AnnotatedString = buildAnnotatedS
 
 @Composable
 private fun LineText(text: String, align: TextAlign, weight: FontWeight, modifier: Modifier) {
-    MarqueeText(text = text, style = IslandTextStyles.line.copy(fontWeight = weight), textAlign = align, modifier = modifier)
+    MarqueeText(text = text, style = IslandTextStyles.line.copy(fontWeight = weight), textAlign = align, modifier = modifier, reportProgress = true)
 }
 
 @OptIn(ExperimentalTextApi::class)

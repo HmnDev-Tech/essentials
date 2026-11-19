@@ -1,5 +1,6 @@
 package com.sameerasw.essentials.island.plugins.progress
 
+import com.sameerasw.essentials.island.ui.IslandSurfaceAccent
 import android.graphics.Bitmap
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,6 +34,7 @@ import com.sameerasw.essentials.island.ui.components.MarqueeText
 @Composable
 fun ProgressExpanded(
     icon: Bitmap?,
+    iconIsGlyph: Boolean = false,
     title: String,
     text: String?,
     progress: Float,
@@ -43,16 +45,16 @@ fun ProgressExpanded(
     onOpen: () -> Unit,
     scope: IslandExpandedScope,
 ) {
+    IslandSurfaceAccent(accent)
     val spec = scope.spec
     val sidePadding = spec.expandedPadding + spec.expandedCorner * 0.35f
     Box(propagateMinConstraints = true) {
         Column(Modifier.fillMaxWidth().padding(spec.expandedOutset)) {
             Spacer(Modifier.height(spec.expandedTopPadding))
             scope.CameraRow(
-                horizontalPadding = spec.cameraGap + spec.expandedCorner * 0.35f,
+                title = title,
                 start = {
-                    IslandBitmap(icon, spec.cellSize, fallbackRes = R.drawable.rounded_downloading_24)
-                    MarqueeText(text = title, style = IslandTextStyles.title, modifier = Modifier.weight(1f))
+                    IslandBitmap(icon, spec.cellSize, fallbackRes = R.drawable.rounded_downloading_24, tint = if (iconIsGlyph) accent else null)
                 },
                 end = {
                     if (!indeterminate) Text("${(progress * 100).toInt()}%", style = IslandTextStyles.body.copy(color = islandTextColor()))

@@ -28,7 +28,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -47,6 +46,7 @@ import com.sameerasw.essentials.domain.diy.Action
 import com.sameerasw.essentials.domain.diy.ActionRegistry
 import com.sameerasw.essentials.domain.model.AppPermission
 import com.sameerasw.essentials.domain.model.AppSelection
+import com.sameerasw.essentials.translation.TranslatableText
 import com.sameerasw.essentials.ui.components.CategoryExpandableSection
 import com.sameerasw.essentials.ui.components.sliders.ConfigSliderItem
 import com.sameerasw.essentials.ui.core.cards.IconToggleItem
@@ -211,8 +211,8 @@ fun StatusGlanceSettingsUI(
             Column(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Text(
-                    text = stringResource(R.string.status_glance_section_position),
+                TranslatableText(
+                    stringResId = R.string.status_glance_section_position,
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = 8.dp),
@@ -223,8 +223,8 @@ fun StatusGlanceSettingsUI(
                     cornerRadius = 24.dp,
                 ) {
                     if (viewModel.isFoldableCameraDevice.value) {
-                        Text(
-                            text = stringResource(R.string.foldable_camera_profile_hint),
+                        TranslatableText(
+                            stringResId = R.string.foldable_camera_profile_hint,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -307,8 +307,8 @@ fun StatusGlanceSettingsUI(
                     )
                 }
 
-                Text(
-                    text = stringResource(R.string.status_glance_section_what_to_show),
+                TranslatableText(
+                    stringResId = R.string.status_glance_section_what_to_show,
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = 8.dp),
@@ -381,6 +381,17 @@ fun StatusGlanceSettingsUI(
                     )
 
                     IconToggleItem(
+                        title = stringResource(R.string.island_time_show_seconds_title),
+                        iconRes = R.drawable.rounded_schedule_24,
+                        isChecked = viewModel.isStatusGlanceShowSeconds.value,
+                        onCheckedChange = {
+                            HapticUtil.performUIHaptic(view)
+                            viewModel.setStatusGlanceShowSeconds(it)
+                        },
+                        modifier = Modifier.highlight(highlightSetting == "status_glance_show_seconds"),
+                    )
+
+                    IconToggleItem(
                         title = stringResource(R.string.status_glance_show_battery_title),
                         iconRes = R.drawable.battery_android_frame_full_24px,
                         isChecked = viewModel.isStatusGlanceShowBattery.value,
@@ -395,8 +406,8 @@ fun StatusGlanceSettingsUI(
                     )
                 }
 
-                Text(
-                    text = stringResource(R.string.status_glance_section_gestures),
+                TranslatableText(
+                    stringResId = R.string.status_glance_section_gestures,
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = 8.dp),
@@ -458,8 +469,8 @@ fun StatusGlanceSettingsUI(
                     )
                 }
 
-                Text(
-                    text = stringResource(R.string.status_glance_section_appearance),
+                TranslatableText(
+                    stringResId = R.string.status_glance_section_appearance,
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = 8.dp),
@@ -589,8 +600,8 @@ fun StatusGlanceSettingsUI(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Text(
-                    text = stringResource(R.string.status_glance_action_pick_title),
+                TranslatableText(
+                    stringResId = R.string.status_glance_action_pick_title,
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -725,8 +736,8 @@ fun StatusGlanceSettingsUI(
                     .padding(bottom = 32.dp, start = 16.dp, end = 16.dp, top = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(
-                    text = stringResource(R.string.flashlight_options_title),
+                TranslatableText(
+                    stringResId = R.string.flashlight_options_title,
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -760,7 +771,7 @@ fun StatusGlanceSettingsUI(
                     modifier = Modifier.fillMaxWidth(),
                     shape = MaterialTheme.shapes.extraLarge,
                 ) {
-                    Text(stringResource(R.string.action_done))
+                    TranslatableText(R.string.action_done)
                 }
             }
         }

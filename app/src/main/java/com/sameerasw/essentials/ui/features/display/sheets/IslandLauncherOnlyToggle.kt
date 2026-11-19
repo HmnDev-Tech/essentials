@@ -43,7 +43,10 @@ fun IslandPrefToggle(
     iconRes: Int,
     title: String,
     modifier: Modifier = Modifier,
+    description: String? = null,
     defaultValue: Boolean = false,
+    enabled: Boolean = true,
+    forceChecked: Boolean = false,
     onChanged: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -53,7 +56,9 @@ fun IslandPrefToggle(
     IconToggleItem(
         iconRes = iconRes,
         title = title,
-        isChecked = checked,
+        description = description,
+        isChecked = forceChecked || checked,
+        enabled = enabled,
         onCheckedChange = {
             HapticUtil.performVirtualKeyHaptic(view)
             checked = it

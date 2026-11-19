@@ -13,7 +13,6 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.IBinder
 import android.os.RemoteException
-import com.sameerasw.essentials.EssentialsApp
 import moe.shizuku.server.IShizukuService
 import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuProvider
@@ -116,7 +115,6 @@ object ShizukuUtils {
     fun isShizukuAvailable(): Boolean =
         try {
             Shizuku.pingBinder()
-            true
         } catch (
             @Suppress("UNUSED_PARAMETER") e: Exception,
         ) {
@@ -124,6 +122,10 @@ object ShizukuUtils {
         }
 
     fun requestPermission() {
+        if (ShellUtils.isSheveryEnabled(EssentialsApp.context)) {
+            SheveryUtils.requestPermission()
+            return
+        }
         try {
             Shizuku.requestPermission(1003)
         } catch (
@@ -151,8 +153,7 @@ object ShizukuUtils {
         if (!hasPermission() || !isBinderAlive) return false
 
         return try {
-            val pkg = EssentialsApp.context.packageName
-            runCommand("pm grant $pkg android.permission.WRITE_SECURE_SETTINGS")
+            runCommand("pm grant ${EssentialsApp.context.packageName} android.permission.WRITE_SECURE_SETTINGS")
             true
         } catch (
             @Suppress("UNUSED_PARAMETER") e: Exception,
@@ -165,8 +166,7 @@ object ShizukuUtils {
         if (!hasPermission() || !isBinderAlive) return false
 
         return try {
-            val pkg = EssentialsApp.context.packageName
-            runCommand("pm grant $pkg android.permission.BATTERY_STATS")
+            runCommand("pm grant ${EssentialsApp.context.packageName} android.permission.BATTERY_STATS")
             true
         } catch (
             @Suppress("UNUSED_PARAMETER") e: Exception,

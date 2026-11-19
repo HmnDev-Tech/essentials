@@ -3,7 +3,6 @@ package com.sameerasw.essentials.ui.features.display
 import android.widget.Toast
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -17,12 +16,14 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import com.sameerasw.essentials.translation.TranslatableText
 import kotlinx.coroutines.launch
 import com.sameerasw.essentials.R
 import com.sameerasw.essentials.data.repository.SettingsRepository
-import com.sameerasw.essentials.island.remote.OvercastLink
+import com.sameerasw.essentials.island.remote.KnownProviders
 import com.sameerasw.essentials.island.remote.ProviderDiscovery
 import com.sameerasw.essentials.island.remote.ProviderInfo
+import com.sameerasw.essentials.island.remote.PairingResult
 import com.sameerasw.essentials.island.remote.ProviderPairing
 import com.sameerasw.essentials.island.remote.ProviderTrustStore
 import com.sameerasw.essentials.ui.core.cards.IconToggleItem
@@ -41,13 +42,13 @@ fun IslandProvidersSection(onChanged: () -> Unit = {}) {
         onPauseOrDispose {}
     }
     val providers = remember(refresh) { ProviderDiscovery.query(context) }
-    val showOvercast = providers.none { it.packageName == OvercastLink.PACKAGE }
+    val suggested = KnownProviders.all.filter { known -> providers.none { it.packageName == known.packageName } }
     var pending by remember { mutableStateOf<ProviderInfo?>(null) }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    Text(
-        text = stringResource(R.string.island_providers_title),
+    TranslatableText(
+        stringResId = R.string.island_providers_title,
         style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(start = 8.dp),
@@ -72,14 +73,14 @@ fun IslandProvidersSection(onChanged: () -> Unit = {}) {
                 onSettingsClick = { ProviderDiscovery.openSettings(context, provider) },
             )
         }
-        if (showOvercast) {
+        suggested.forEach { known ->
             IconToggleItem(
-                iconRes = R.drawable.rounded_partly_cloudy_day_24,
-                title = stringResource(R.string.app_overcast),
+                iconRes = known.iconRes,
+                title = stringResource(known.nameRes),
                 showToggle = false,
                 onClick = {
                     HapticUtil.performVirtualKeyHaptic(view)
-                    if (OvercastLink.isInstalled(context)) OvercastLink.openApp(context) else OvercastLink.openInstallPage(context)
+                    known.open(context)
                 },
             )
         }
@@ -92,10 +93,12 @@ fun IslandProvidersSection(onChanged: () -> Unit = {}) {
             onAllow = {
                 busy = true
                 scope.launch {
-                    if (ProviderPairing.grant(context, provider) && trust.enable(context, provider.packageName)) {
+                    val result = ProviderPairing.grant(context, provider)
+                    if (result == PairingResult.Granted && trust.enable(context, provider.packageName)) {
                         pending = null
                     } else {
-                        Toast.makeText(context, R.string.island_provider_pair_failed, Toast.LENGTH_SHORT).show()
+                        val message = if (result == PairingResult.Refused) R.string.island_provider_pair_refused else R.string.island_provider_pair_failed
+                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                     }
                     busy = false
                     refresh++

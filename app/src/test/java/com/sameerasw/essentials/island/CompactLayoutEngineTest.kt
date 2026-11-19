@@ -75,4 +75,49 @@ class CompactLayoutEngineTest {
 
     @Test fun balanceLeavesPinnedOnLeft() =
         assertEquals("time | flash.icon media.eq media.art", withBubble(listOf(time, flash, media), balance = true))
+
+    private fun weighted(entries: List<CompactEntry>, widths: Map<String, Float>, leftExtra: Int = 0, bubble: Float = leftExtra.toFloat()): String {
+        val a = CompactLayoutEngine.arrange(
+            entries, CameraAnchor.Center, maxCells = 8, leftExtra = leftExtra, balance = true,
+            cellWidth = { widths[it] ?: 1f }, leftExtraWidth = bubble,
+        )
+        return (a.before.reversed() + "|" + a.after).joinToString(" ")
+    }
+
+    @Test fun wideTimeSendsSingleCellItemsRight() =
+        assertEquals("time | battery notif.icon flash.icon", weighted(listOf(time, battery, catchUp, flash), mapOf("time" to 3f)))
+
+    @Test fun equalWidthsMatchCellCount() =
+        assertEquals("flash.icon time | battery notif.icon", weighted(listOf(time, battery, catchUp, flash), emptyMap()))
+
+    @Test fun wideBubbleSendsEverythingRight() =
+        assertEquals("| notif.icon flash.icon media.eq media.art", weighted(listOf(catchUp, flash, media), emptyMap(), leftExtra = 1, bubble = 3f))
+
+    @Test fun wideNotificationBalancesAgainstMedia() =
+        assertEquals("notif.icon | flash.icon media.eq media.art", weighted(listOf(catchUp, flash, media), mapOf("notif.icon" to 3f)))
+
+    @Test fun chipsSitAtOuterEdge() =
+        assertEquals(
+            "notif.icon | media.eq media.art flash.icon",
+            weighted(listOf(catchUp, flash.copy(chip = true), media), mapOf("notif.icon" to 3f)),
+        )
+
+    @Test fun twoCellItemsMoveToCloseGap() =
+        assertEquals(
+            "media.art media.eq time | cal.time cal.icon",
+            weighted(listOf(time, media, calendar), mapOf("cal.time" to 2f)),
+        )
+
+    @Test fun pinnedMovesWhenItClosesGap() =
+        assertEquals("| time battery", weighted(listOf(time, battery), emptyMap(), leftExtra = 1, bubble = 2f))
+
+    @Test fun pinnedCrossesWideHubWhenUnbalanced() {
+        val a = CompactLayoutEngine.arrange(
+            listOf(time, battery),
+            leftExtra = 3,
+            fits = { before, _ -> if (before.isEmpty()) 1 else null },
+        )
+        assertEquals(setOf("time", "battery"), a.visibleItems)
+        assertEquals(emptyList<String>(), a.before)
+    }
 }

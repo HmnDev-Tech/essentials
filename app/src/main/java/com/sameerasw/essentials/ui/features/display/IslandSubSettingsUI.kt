@@ -1,6 +1,9 @@
 package com.sameerasw.essentials.ui.features.display
 
 import android.content.Intent
+import android.os.Build
+import android.view.WindowManager
+import androidx.core.content.ContextCompat
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -10,6 +13,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Spacer
@@ -34,14 +38,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
+import com.sameerasw.essentials.island.ui.IslandBackdropBlurSupport
 import com.sameerasw.essentials.FeatureSettingsActivity
 import com.sameerasw.essentials.R
+import com.sameerasw.essentials.translation.TranslatableText
+import kotlin.math.ceil
+import androidx.compose.ui.platform.LocalConfiguration
 import com.sameerasw.essentials.data.repository.SettingsRepository
 import com.sameerasw.essentials.ui.components.sliders.ConfigSliderItem
 import com.sameerasw.essentials.ui.core.cards.IconToggleItem
@@ -57,6 +67,7 @@ import com.sameerasw.essentials.ui.features.display.actions.HorizontalSlideModeS
 import com.sameerasw.essentials.ui.features.display.actions.horizontalSlideDescription
 import com.sameerasw.essentials.ui.features.display.sheets.IslandAlarmOptionsBottomSheet
 import com.sameerasw.essentials.ui.features.display.sheets.IslandBorderOutlineOptionsBottomSheet
+import com.sameerasw.essentials.ui.features.display.sheets.IslandGlowOptionsBottomSheet
 import com.sameerasw.essentials.ui.features.display.sheets.IslandNotificationHubOptionsBottomSheet
 import com.sameerasw.essentials.ui.features.display.sheets.IslandBriefOptionsBottomSheet
 import com.sameerasw.essentials.ui.features.display.sheets.IslandCallOptionsBottomSheet
@@ -72,6 +83,10 @@ import com.sameerasw.essentials.utils.HapticUtil
 import com.sameerasw.essentials.utils.PermissionUIHelper
 import com.sameerasw.essentials.utils.PermissionUtils
 import com.sameerasw.essentials.ui.core.sheets.HideStatusBarInfoBottomSheet
+import com.sameerasw.essentials.ui.core.sheets.StatusBarAwareWidthInfoBottomSheet
+import com.sameerasw.essentials.ui.core.sheets.PersistentOrderInfoBottomSheet
+import com.sameerasw.essentials.ui.core.sheets.PreferStillIslandInfoBottomSheet
+import com.sameerasw.essentials.ui.core.sheets.BackdropBlurUnavailableBottomSheet
 import com.sameerasw.essentials.utils.ShellUtils
 import com.sameerasw.essentials.viewmodels.MainViewModel
 
@@ -79,6 +94,7 @@ const val ISLAND_PLACEMENT_FEATURE_ID = "Island placement"
 const val ISLAND_VISUALS_FEATURE_ID = "Island visuals"
 const val ISLAND_DURATION_FEATURE_ID = "Island duration"
 const val ISLAND_BEHAVIOR_FEATURE_ID = "Island behavior"
+const val ISLAND_INTERACTIONS_FEATURE_ID = "Island interactions"
 const val ISLAND_NOTIFICATIONS_FEATURE_ID = "Island notifications"
 
 val ISLAND_SUB_PAGE_IDS = setOf(
@@ -86,6 +102,7 @@ val ISLAND_SUB_PAGE_IDS = setOf(
     ISLAND_VISUALS_FEATURE_ID,
     ISLAND_DURATION_FEATURE_ID,
     ISLAND_BEHAVIOR_FEATURE_ID,
+    ISLAND_INTERACTIONS_FEATURE_ID,
     ISLAND_NOTIFICATIONS_FEATURE_ID,
 )
 
@@ -94,6 +111,7 @@ internal val ISLAND_SUB_PAGES = listOf(
     Triple(ISLAND_VISUALS_FEATURE_ID, R.string.island_section_visuals, R.drawable.rounded_palette_24),
     Triple(ISLAND_DURATION_FEATURE_ID, R.string.island_section_duration, R.drawable.rounded_timer_24),
     Triple(ISLAND_BEHAVIOR_FEATURE_ID, R.string.island_section_behavior, R.drawable.rounded_settings_motion_mode_24),
+    Triple(ISLAND_INTERACTIONS_FEATURE_ID, R.string.island_section_interactions, R.drawable.rounded_touch_app_24),
 )
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
@@ -110,6 +128,12 @@ fun IslandPlacementSettingsUI(
         displayConfiguration.orientation) {
         viewModel.refreshIslandCameraPlacement()
     }
+    var showStatusBarAwareInfo by remember { mutableStateOf(false) }
+
+    if (showStatusBarAwareInfo) {
+        StatusBarAwareWidthInfoBottomSheet(onDismissRequest = { showStatusBarAwareInfo = false })
+    }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -118,13 +142,20 @@ fun IslandPlacementSettingsUI(
     ) {
         IslandPreviewControls()
 
+        val configuration = LocalConfiguration.current
+        val maxIslandWidth =
+            remember(configuration.screenWidthDp, configuration.screenHeightDp) {
+                (ceil(maxOf(configuration.screenWidthDp, configuration.screenHeightDp) / 10f) * 10f)
+                    .coerceAtLeast(500f)
+            }
+
         RoundedCardContainer(
             spacing = 2.dp,
             cornerRadius = 24.dp,
         ) {
             if (viewModel.isFoldableCameraDevice.value) {
-                Text(
-                    text = stringResource(R.string.foldable_camera_profile_hint),
+                TranslatableText(
+                    stringResId = R.string.foldable_camera_profile_hint,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -142,6 +173,7 @@ fun IslandPlacementSettingsUI(
                     onCheckedChange = { viewModel.setIslandHiddenInCurrentOrientation(it) },
                 )
             }
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -149,8 +181,8 @@ fun IslandPlacementSettingsUI(
                     .padding(top = 12.dp)
                     .highlight(highlightSetting == "island_camera_position"),
             ) {
-                Text(
-                    text = stringResource(R.string.island_camera_position_title),
+                TranslatableText(
+                    stringResId = R.string.island_camera_position_title,
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(horizontal = 16.dp),
@@ -196,9 +228,14 @@ fun IslandPlacementSettingsUI(
                     modifier = Modifier.size(20.dp),
                 )
                 Spacer(modifier = Modifier.size(8.dp))
-                Text(text = stringResource(R.string.island_auto_align_camera))
+                TranslatableText(stringResId = R.string.island_auto_align_camera)
             }
+        }
 
+        RoundedCardContainer(
+            spacing = 2.dp,
+            cornerRadius = 24.dp,
+        ) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 ConfigSliderItem(
                     title = stringResource(R.string.island_camera_offset_x_title),
@@ -229,6 +266,26 @@ fun IslandPlacementSettingsUI(
             }
 
             ConfigSliderItem(
+                title = stringResource(R.string.island_max_width_title),
+                value = viewModel.islandMaxWidth.floatValue,
+                onValueChange = {
+                    HapticUtil.performUIHaptic(view)
+                    viewModel.setIslandMaxWidth(it)
+                },
+                valueRange = 150f..maxIslandWidth,
+                increment = 10f,
+                iconRes = R.drawable.rounded_arrows_outward_24,
+                valueFormatter = { "%.1f dp".format(it) },
+                allowDecimals = true,
+                modifier = Modifier.highlight(highlightSetting == "island_max_width"),
+            )
+        }
+
+        RoundedCardContainer(
+            spacing = 2.dp,
+            cornerRadius = 24.dp,
+        ) {
+            ConfigSliderItem(
                 title = stringResource(R.string.island_camera_size_title),
                 value = viewModel.islandCameraSize.floatValue,
                 onValueChange = {
@@ -241,36 +298,6 @@ fun IslandPlacementSettingsUI(
                 valueFormatter = { "%.2fx".format(it) },
                 allowDecimals = true,
                 modifier = Modifier.highlight(highlightSetting == "island_camera_size"),
-            )
-
-            ConfigSliderItem(
-                title = stringResource(R.string.island_max_width_title),
-                value = viewModel.islandMaxWidth.floatValue,
-                onValueChange = {
-                    HapticUtil.performUIHaptic(view)
-                    viewModel.setIslandMaxWidth(it)
-                },
-                valueRange = 150f..500f,
-                increment = 10f,
-                iconRes = R.drawable.rounded_arrows_outward_24,
-                valueFormatter = { "%.1f dp".format(it) },
-                allowDecimals = true,
-                modifier = Modifier.highlight(highlightSetting == "island_max_width"),
-            )
-
-            ConfigSliderItem(
-                title = stringResource(R.string.island_expanded_width_title),
-                value = viewModel.islandExpandedWidth.floatValue,
-                onValueChange = {
-                    HapticUtil.performUIHaptic(view)
-                    viewModel.setIslandExpandedWidth(it)
-                },
-                valueRange = 200f..500f,
-                increment = 10f,
-                iconRes = R.drawable.rounded_arrows_outward_24,
-                valueFormatter = { "%.1f dp".format(it) },
-                allowDecimals = true,
-                modifier = Modifier.highlight(highlightSetting == "island_expanded_width"),
             )
 
             ConfigSliderItem(
@@ -293,115 +320,83 @@ fun IslandPlacementSettingsUI(
             spacing = 2.dp,
             cornerRadius = 24.dp,
         ) {
-            IconToggleItem(
-                iconRes = R.drawable.rounded_mobile_rotate_24,
-                title = stringResource(R.string.island_keep_on_landscape_title),
-                isChecked = viewModel.isIslandKeepOnLandscape.value,
-                onCheckedChange = { checked ->
-                    HapticUtil.performVirtualKeyHaptic(view)
-                    viewModel.setIslandKeepOnLandscape(checked)
+            ConfigSliderItem(
+                title = stringResource(R.string.island_padding_around_title),
+                value = viewModel.islandPaddingAround.floatValue,
+                onValueChange = {
+                    HapticUtil.performUIHaptic(view)
+                    viewModel.setIslandPaddingAround(it)
                 },
-                modifier = Modifier.highlight(highlightSetting == "island_keep_on_landscape"),
+                valueRange = 0f..16f,
+                increment = 1f,
+                iconRes = R.drawable.rounded_arrows_outward_24,
+                valueFormatter = { "%.1f dp".format(it) },
+                allowDecimals = true,
+                modifier = Modifier.highlight(highlightSetting == "island_padding_around"),
             )
+        }
 
-            if (viewModel.isIslandKeepOnLandscape.value) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            TranslatableText(
+                stringResId = R.string.island_section_expanded,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 8.dp),
+            )
+            RoundedCardContainer(
+                spacing = 2.dp,
+                cornerRadius = 24.dp,
+            ) {
                 ConfigSliderItem(
-                    title = stringResource(R.string.island_landscape_top_spacing_title),
-                    value = viewModel.islandLandscapeTopSpacing.floatValue,
+                    title = stringResource(R.string.island_expanded_scale_title),
+                    description = stringResource(R.string.island_expanded_scale_desc),
+                    value = viewModel.islandExpandedScale.floatValue,
                     onValueChange = {
                         HapticUtil.performUIHaptic(view)
-                        viewModel.setIslandLandscapeTopSpacing(it)
+                        viewModel.setIslandExpandedScale(it)
                     },
-                    valueRange = 0f..60f,
-                    increment = 0.5f,
-                    iconRes = R.drawable.rounded_vertical_align_top_24,
-                    valueFormatter = { "%.1f dp".format(it) },
-                    modifier = Modifier.highlight(highlightSetting == "island_landscape_top_spacing"),
+                    valueRange = 1f..1.3f,
+                    increment = 0.02f,
+                    iconRes = R.drawable.rounded_magnify_fullscreen_24,
+                    valueFormatter = { "${(it * 100).toInt()}%" },
+                    modifier = Modifier.highlight(highlightSetting == "island_expanded_scale"),
                 )
 
-                IconToggleItem(
-                    iconRes = R.drawable.rounded_vertical_align_top_24,
-                    title = stringResource(R.string.island_bond_edge_title),
-                    isChecked = viewModel.isIslandBondEdge.value,
-                    onCheckedChange = { checked ->
-                        HapticUtil.performVirtualKeyHaptic(view)
-                        viewModel.setIslandBondEdge(checked)
+                ConfigSliderItem(
+                    title = stringResource(R.string.island_expanded_width_title),
+                    value = viewModel.islandExpandedWidth.floatValue,
+                    onValueChange = {
+                        HapticUtil.performUIHaptic(view)
+                        viewModel.setIslandExpandedWidth(it)
                     },
-                    modifier = Modifier.highlight(highlightSetting == "island_bond_edge"),
+                    valueRange = 200f..maxIslandWidth,
+                    increment = 10f,
+                    iconRes = R.drawable.rounded_arrows_outward_24,
+                    valueFormatter = { "%.1f dp".format(it) },
+                    allowDecimals = true,
+                    modifier = Modifier.highlight(highlightSetting == "island_expanded_width"),
+                )
+
+                ConfigSliderItem(
+                    title = stringResource(R.string.island_expanded_offset_y_title),
+                    value = viewModel.islandExpandedOffsetY.floatValue,
+                    onValueChange = {
+                        HapticUtil.performUIHaptic(view)
+                        viewModel.setIslandExpandedOffsetY(it)
+                    },
+                    valueRange = 0f..120f,
+                    increment = 2f,
+                    iconRes = R.drawable.rounded_south_24,
+                    valueFormatter = { "${it.toInt()} dp" },
+                    modifier = Modifier.highlight(highlightSetting == "island_expanded_offset_y"),
                 )
             }
         }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
-@Composable
-fun IslandVisualsSettingsUI(
-    viewModel: MainViewModel,
-    modifier: Modifier = Modifier,
-    highlightSetting: String? = null,
-) {
-    val context = LocalContext.current
-    val view = LocalView.current
-    var showBorderOutlineSheet by remember { mutableStateOf(false) }
-    var showPulseShadowSheet by remember { mutableStateOf(false) }
-
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        IslandPreviewControls()
 
         RoundedCardContainer(
             spacing = 2.dp,
             cornerRadius = 24.dp,
         ) {
-            ConfigSliderItem(
-                title = stringResource(R.string.island_expanded_scale_title),
-                description = stringResource(R.string.island_expanded_scale_desc),
-                value = viewModel.islandExpandedScale.floatValue,
-                onValueChange = {
-                    HapticUtil.performUIHaptic(view)
-                    viewModel.setIslandExpandedScale(it)
-                },
-                valueRange = 1f..1.3f,
-                increment = 0.02f,
-                iconRes = R.drawable.rounded_magnify_fullscreen_24,
-                valueFormatter = { "${(it * 100).toInt()}%" },
-                modifier = Modifier.highlight(highlightSetting == "island_expanded_scale"),
-            )
-
-            ConfigSliderItem(
-                title = stringResource(R.string.island_font_scale_title),
-                value = viewModel.islandFontScale.floatValue,
-                onValueChange = {
-                    HapticUtil.performUIHaptic(view)
-                    viewModel.setIslandFontScale(it)
-                },
-                valueRange = 0.8f..1.3f,
-                increment = 0.05f,
-                iconRes = R.drawable.rounded_format_size_24,
-                valueFormatter = { "${(it * 100).toInt()}%" },
-                modifier = Modifier.highlight(highlightSetting == "island_font_scale"),
-            )
-
-            ConfigSliderItem(
-                title = stringResource(R.string.island_animation_speed_title),
-                value = viewModel.islandAnimationSpeed.floatValue,
-                onValueChange = {
-                    HapticUtil.performUIHaptic(view)
-                    viewModel.setIslandAnimationSpeed(it)
-                },
-                valueRange = 0.5f..1.5f,
-                increment = 0.1f,
-                iconRes = R.drawable.rounded_format_size_24,
-                valueFormatter = { "${(it * 100).toInt()}%" },
-                modifier = Modifier.highlight(highlightSetting == "island_animation_speed"),
-            )
-
-
             ConfigSliderItem(
                 title = stringResource(R.string.island_expanded_roundness_title),
                 value = viewModel.islandExpandedRoundness.floatValue,
@@ -459,22 +454,218 @@ fun IslandVisualsSettingsUI(
             )
         }
 
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            TranslatableText(
+                stringResId = R.string.island_section_landscape,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 8.dp),
+            )
+            RoundedCardContainer(
+                spacing = 2.dp,
+                cornerRadius = 24.dp,
+            ) {
+                IconToggleItem(
+                    iconRes = R.drawable.rounded_mobile_rotate_24,
+                    title = stringResource(R.string.island_keep_on_landscape_title),
+                    isChecked = viewModel.isIslandKeepOnLandscape.value,
+                    onCheckedChange = { checked ->
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        viewModel.setIslandKeepOnLandscape(checked)
+                    },
+                    modifier = Modifier.highlight(highlightSetting == "island_keep_on_landscape"),
+                )
+
+                AnimatedVisibility(
+                    visible = viewModel.isIslandKeepOnLandscape.value,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut(),
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        ConfigSliderItem(
+                            title = stringResource(R.string.island_landscape_top_spacing_title),
+                            value = viewModel.islandLandscapeTopSpacing.floatValue,
+                            onValueChange = {
+                                HapticUtil.performUIHaptic(view)
+                                viewModel.setIslandLandscapeTopSpacing(it)
+                            },
+                            valueRange = 0f..60f,
+                            increment = 0.5f,
+                            iconRes = R.drawable.rounded_vertical_align_top_24,
+                            valueFormatter = { "%.1f dp".format(it) },
+                            modifier = Modifier.highlight(highlightSetting == "island_landscape_top_spacing"),
+                        )
+
+                        IconToggleItem(
+                            iconRes = R.drawable.rounded_vertical_align_top_24,
+                            title = stringResource(R.string.island_bond_edge_title),
+                            isChecked = viewModel.isIslandBondEdge.value,
+                            onCheckedChange = { checked ->
+                                HapticUtil.performVirtualKeyHaptic(view)
+                                viewModel.setIslandBondEdge(checked)
+                            },
+                            modifier = Modifier.highlight(highlightSetting == "island_bond_edge"),
+                        )
+                    }
+                }
+            }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            TranslatableText(
+                stringResId = R.string.island_section_experimental,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 8.dp),
+            )
+            RoundedCardContainer(
+                spacing = 2.dp,
+                cornerRadius = 24.dp,
+            ) {
+                IconToggleItem(
+                    iconRes = R.drawable.rounded_arrows_outward_24,
+                    title = stringResource(R.string.island_statusbar_aware_width_title),
+                    isChecked = viewModel.isIslandStatusBarAwareWidth.value,
+                    onCheckedChange = { checked ->
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        viewModel.setIslandStatusBarAwareWidth(checked)
+                    },
+                    onInfoClick = { showStatusBarAwareInfo = true },
+                    modifier = Modifier.highlight(highlightSetting == "island_statusbar_aware_width"),
+                )
+
+                AnimatedVisibility(
+                    visible = viewModel.isIslandStatusBarAwareWidth.value,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut(),
+                ) {
+                    IconToggleItem(
+                        iconRes = R.drawable.rounded_notifications_unread_24,
+                        title = stringResource(R.string.island_statusbar_ignore_notifications_title),
+                        isChecked = viewModel.isIslandStatusBarIgnoreNotifications.value,
+                        onCheckedChange = { checked ->
+                            HapticUtil.performVirtualKeyHaptic(view)
+                            viewModel.setIslandStatusBarIgnoreNotifications(checked)
+                        },
+                        modifier = Modifier.highlight(highlightSetting == "island_statusbar_ignore_notifications"),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+fun IslandVisualsSettingsUI(
+    viewModel: MainViewModel,
+    modifier: Modifier = Modifier,
+    highlightSetting: String? = null,
+) {
+    val context = LocalContext.current
+    val view = LocalView.current
+    var showBorderOutlineSheet by remember { mutableStateOf(false) }
+    var showGlowSheet by remember { mutableStateOf(false) }
+    var showBackdropBlurInfo by remember { mutableStateOf(false) }
+    var windowBlurEnabled by remember { mutableStateOf(IslandBackdropBlurSupport.windowBlurEnabled(context)) }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        DisposableEffect(context) {
+            val wm = context.getSystemService(WindowManager::class.java)
+            val listener = java.util.function.Consumer<Boolean> { windowBlurEnabled = it }
+            wm.addCrossWindowBlurEnabledListener(ContextCompat.getMainExecutor(context), listener)
+            onDispose { wm.removeCrossWindowBlurEnabledListener(listener) }
+        }
+    }
+    val backdropBlurStatus = IslandBackdropBlurSupport.status(context, windowBlurEnabled)
+    val backdropBlurAvailable = backdropBlurStatus == IslandBackdropBlurSupport.Status.Available
+
+    if (showBackdropBlurInfo) {
+        BackdropBlurUnavailableBottomSheet(status = backdropBlurStatus, onDismissRequest = { showBackdropBlurInfo = false })
+    }
+
+    var showPersistentOrderInfo by remember { mutableStateOf(false) }
+
+    if (showPersistentOrderInfo) {
+        PersistentOrderInfoBottomSheet(onDismissRequest = { showPersistentOrderInfo = false })
+    }
+
+    var showPreferStillInfo by remember { mutableStateOf(false) }
+
+    if (showPreferStillInfo) {
+        PreferStillIslandInfoBottomSheet(onDismissRequest = { showPreferStillInfo = false })
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        ExpandedDarkThemeNotice()
+
+        IslandPreviewControls()
+
         RoundedCardContainer(
             spacing = 2.dp,
             cornerRadius = 24.dp,
         ) {
+            ConfigSliderItem(
+                title = stringResource(R.string.island_font_scale_title),
+                value = viewModel.islandFontScale.floatValue,
+                onValueChange = {
+                    HapticUtil.performUIHaptic(view)
+                    viewModel.setIslandFontScale(it)
+                },
+                valueRange = 0.8f..1.3f,
+                increment = 0.05f,
+                iconRes = R.drawable.rounded_format_size_24,
+                valueFormatter = { "${(it * 100).toInt()}%" },
+                modifier = Modifier.highlight(highlightSetting == "island_font_scale"),
+            )
+
+            ConfigSliderItem(
+                title = stringResource(R.string.island_animation_speed_title),
+                value = viewModel.islandAnimationSpeed.floatValue,
+                onValueChange = {
+                    HapticUtil.performUIHaptic(view)
+                    viewModel.setIslandAnimationSpeed(it)
+                },
+                valueRange = 0.5f..1.5f,
+                increment = 0.1f,
+                iconRes = R.drawable.rounded_format_size_24,
+                valueFormatter = { "${(it * 100).toInt()}%" },
+                modifier = Modifier.highlight(highlightSetting == "island_animation_speed"),
+            )
+
             IconToggleItem(
-                iconRes = R.drawable.rounded_square_24,
-                title = stringResource(R.string.island_border_outline_title),
-                description = stringResource(R.string.island_border_outline_desc),
-                isChecked = viewModel.isIslandBorderOutline.value,
+                iconRes = R.drawable.rounded_format_align_center_24,
+                title = stringResource(R.string.island_balance_compact_title),
+                isChecked = viewModel.isIslandBalanceCompact.value,
                 onCheckedChange = { checked ->
                     HapticUtil.performVirtualKeyHaptic(view)
-                    viewModel.setIslandBorderOutline(checked)
+                    viewModel.setIslandBalanceCompact(checked)
                 },
-                onSettingsClick = { showBorderOutlineSheet = true },
-                modifier = Modifier.highlight(highlightSetting == "island_border_outline_enabled"),
+                modifier = Modifier.highlight(highlightSetting == "island_balance_compact"),
             )
+
+            IconToggleItem(
+                iconRes = R.drawable.rounded_swap_vert_24,
+                title = stringResource(R.string.island_persistent_order_title),
+                isChecked = viewModel.isIslandPersistentOrder.value,
+                onCheckedChange = { checked ->
+                    HapticUtil.performVirtualKeyHaptic(view)
+                    viewModel.setIslandPersistentOrder(checked)
+                },
+                onInfoClick = { showPersistentOrderInfo = true },
+                modifier = Modifier.highlight(highlightSetting == "island_persistent_order"),
+            )
+
+        }
+
+        RoundedCardContainer(
+            spacing = 2.dp,
+            cornerRadius = 24.dp,
+        ) {
 
             IconToggleItem(
                 iconRes = R.drawable.rounded_blur_on_24,
@@ -484,20 +675,174 @@ fun IslandVisualsSettingsUI(
                     HapticUtil.performVirtualKeyHaptic(view)
                     viewModel.setIslandShowGlow(checked)
                 },
+                onSettingsClick = { showGlowSheet = true },
                 modifier = Modifier.highlight(highlightSetting == "island_show_glow"),
+            )
+        }
+
+        Column {
+            RoundedCardContainer(
+                spacing = 2.dp,
+                cornerRadius = 24.dp,
+            ) {
+                IconToggleItem(
+                    iconRes = R.drawable.rounded_blur_on_24,
+                    title = stringResource(R.string.island_transparency_title),
+                    isChecked = viewModel.isIslandTransparency.value,
+                    onCheckedChange = { checked ->
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        viewModel.setIslandTransparency(checked)
+                    },
+                    modifier = Modifier.highlight(highlightSetting == "island_transparency"),
+                )
+
+                AnimatedVisibility(
+                    visible = viewModel.isIslandTransparency.value,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut(),
+                ) {
+                    ConfigSliderItem(
+                        title = stringResource(R.string.island_transparency_intensity_title),
+                        value = viewModel.islandTransparencyIntensity.floatValue,
+                        onValueChange = {
+                            HapticUtil.performUIHaptic(view)
+                            viewModel.setIslandTransparencyIntensity(it)
+                        },
+                        valueRange = 0.25f..5f,
+                        increment = 0.05f,
+                        iconRes = R.drawable.rounded_blur_on_24,
+                        valueFormatter = { "%d%%".format((it * 100).roundToInt()) },
+                        allowDecimals = true,
+                        modifier = Modifier.highlight(highlightSetting == "island_transparency_intensity"),
+                    )
+                }
+            }
+            AnimatedVisibility(
+                visible = viewModel.isIslandTransparency.value,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut(),
+            ) {
+                Box(Modifier.padding(top = 16.dp)) {
+                    RoundedCardContainer(
+                        spacing = 2.dp,
+                        cornerRadius = 24.dp,
+                    ) {
+                        IconToggleItem(
+                            iconRes = R.drawable.rounded_blur_on_24,
+                            title = stringResource(R.string.island_backdrop_blur_title),
+                            isChecked = backdropBlurAvailable && viewModel.isIslandBackdropBlur.value,
+                            enabled = backdropBlurAvailable,
+                            onCheckedChange = { checked ->
+                                HapticUtil.performVirtualKeyHaptic(view)
+                                viewModel.setIslandBackdropBlur(checked)
+                            },
+                            onDisabledClick = { showBackdropBlurInfo = true },
+                            onInfoClick = { showBackdropBlurInfo = true },
+                            modifier = Modifier.highlight(highlightSetting == "island_backdrop_blur"),
+                        )
+
+                        AnimatedVisibility(
+                            visible = backdropBlurAvailable && viewModel.isIslandBackdropBlur.value,
+                            enter = expandVertically() + fadeIn(),
+                            exit = shrinkVertically() + fadeOut(),
+                        ) {
+                            ConfigSliderItem(
+                                title = stringResource(R.string.island_backdrop_blur_radius_title),
+                                value = viewModel.islandBackdropBlurRadius.floatValue,
+                                onValueChange = {
+                                    HapticUtil.performUIHaptic(view)
+                                    viewModel.setIslandBackdropBlurRadius(it)
+                                },
+                                valueRange = 5f..120f,
+                                increment = 5f,
+                                iconRes = R.drawable.rounded_blur_on_24,
+                                valueFormatter = { "%d dp".format(it.roundToInt()) },
+                                modifier = Modifier.highlight(highlightSetting == "island_backdrop_blur_radius"),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        RoundedCardContainer(
+            spacing = 2.dp,
+            cornerRadius = 24.dp,
+        ) {
+            IconToggleItem(
+                iconRes = R.drawable.rounded_blur_on_24,
+                title = stringResource(R.string.island_progressive_blur_title),
+                isChecked = viewModel.isIslandProgressiveBlur.value,
+                enabled = viewModel.isIslandTransparency.value,
+                onCheckedChange = { checked ->
+                    HapticUtil.performVirtualKeyHaptic(view)
+                    viewModel.setIslandProgressiveBlur(checked)
+                },
+                modifier = Modifier.highlight(highlightSetting == "island_progressive_blur"),
             )
 
             IconToggleItem(
-                iconRes = R.drawable.rounded_blur_on_24,
-                title = stringResource(R.string.island_pulse_shadow_title),
-                description = stringResource(R.string.island_pulse_shadow_desc),
-                isChecked = viewModel.isIslandPulseShadow.value,
+                iconRes = R.drawable.rounded_grain_24,
+                title = stringResource(R.string.island_neural_expressive_title),
+                isChecked = viewModel.isIslandNeuralExpressive.value,
+                enabled = viewModel.isIslandTransparency.value,
                 onCheckedChange = { checked ->
                     HapticUtil.performVirtualKeyHaptic(view)
-                    viewModel.setIslandPulseShadow(checked)
+                    viewModel.setIslandNeuralExpressive(checked)
                 },
-                onSettingsClick = { showPulseShadowSheet = true },
-                modifier = Modifier.highlight(highlightSetting == "island_pulse_shadow_on_notification"),
+                modifier = Modifier.highlight(highlightSetting == "island_neural_expressive"),
+            )
+
+            AnimatedVisibility(
+                visible = viewModel.isIslandTransparency.value && viewModel.isIslandNeuralExpressive.value,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut(),
+            ) {
+                IconToggleItem(
+                    iconRes = R.drawable.rounded_grain_24,
+                    title = stringResource(R.string.island_neural_expressive_always_title),
+                    isChecked = viewModel.isIslandNeuralExpressiveAlways.value,
+                    onCheckedChange = { checked ->
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        viewModel.setIslandNeuralExpressiveAlways(checked)
+                    },
+                    modifier = Modifier.highlight(highlightSetting == "island_neural_expressive_always"),
+                )
+            }
+        }
+
+        RoundedCardContainer(
+            spacing = 2.dp,
+            cornerRadius = 24.dp,
+        ) {
+            val chipSettings = remember { SettingsRepository(context) }
+            var chips by remember { mutableStateOf(chipSettings.getBoolean(SettingsRepository.KEY_ISLAND_CHIPS, false)) }
+            IconToggleItem(
+                iconRes = R.drawable.rounded_palette_24,
+                title = stringResource(R.string.island_chips_title),
+                isChecked = chips,
+                onCheckedChange = { checked ->
+                    HapticUtil.performVirtualKeyHaptic(view)
+                    chips = checked
+                    chipSettings.putBoolean(SettingsRepository.KEY_ISLAND_CHIPS, checked)
+                },
+            )
+        }
+
+        RoundedCardContainer(
+            spacing = 2.dp,
+            cornerRadius = 24.dp,
+        ) {
+            IconToggleItem(
+                iconRes = R.drawable.rounded_square_24,
+                title = stringResource(R.string.island_border_outline_title),
+                isChecked = viewModel.isIslandBorderOutline.value,
+                onCheckedChange = { checked ->
+                    HapticUtil.performVirtualKeyHaptic(view)
+                    viewModel.setIslandBorderOutline(checked)
+                },
+                onSettingsClick = { showBorderOutlineSheet = true },
+                modifier = Modifier.highlight(highlightSetting == "island_border_outline_enabled"),
             )
         }
 
@@ -575,31 +920,48 @@ fun IslandVisualsSettingsUI(
                 },
             )
 
-            var chips by remember { mutableStateOf(iconSettings.getBoolean(SettingsRepository.KEY_ISLAND_CHIPS, false)) }
-            IconToggleItem(
-                iconRes = R.drawable.rounded_palette_24,
-                title = stringResource(R.string.island_chips_title),
-                isChecked = chips,
-                onCheckedChange = { checked ->
-                    HapticUtil.performVirtualKeyHaptic(view)
-                    chips = checked
-                    iconSettings.putBoolean(SettingsRepository.KEY_ISLAND_CHIPS, checked)
-                },
-            )
         }
+
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            TranslatableText(
+                stringResId = R.string.island_section_experimental,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 8.dp),
+            )
+            RoundedCardContainer(
+                spacing = 2.dp,
+                cornerRadius = 24.dp,
+            ) {
+                val stillSettings = remember { SettingsRepository(context) }
+                var preferStill by remember { mutableStateOf(stillSettings.isIslandPreferStillEnabled()) }
+                IconToggleItem(
+                    iconRes = R.drawable.rounded_motion_photos_paused_24,
+                    title = stringResource(R.string.island_prefer_still_title),
+                    isChecked = preferStill,
+                    onCheckedChange = { checked ->
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        preferStill = checked
+                        stillSettings.setIslandPreferStillEnabled(checked)
+                    },
+                    onInfoClick = { showPreferStillInfo = true },
+                    modifier = Modifier.highlight(highlightSetting == "island_prefer_still"),
+                )
+            }
+        }
+    }
+
+    if (showGlowSheet) {
+        IslandGlowOptionsBottomSheet(
+            viewModel = viewModel,
+            onDismissRequest = { showGlowSheet = false },
+        )
     }
 
     if (showBorderOutlineSheet) {
         IslandBorderOutlineOptionsBottomSheet(
             viewModel = viewModel,
             onDismissRequest = { showBorderOutlineSheet = false },
-        )
-    }
-
-    if (showPulseShadowSheet) {
-        IslandPulseShadowOptionsBottomSheet(
-            viewModel = viewModel,
-            onDismissRequest = { showPulseShadowSheet = false },
         )
     }
 }
@@ -635,6 +997,16 @@ fun IslandDurationSettingsUI(
                 increment = 0.5f,
                 iconRes = R.drawable.rounded_timer_24,
                 valueFormatter = { "%.1fs".format(it) },
+            )
+
+            IconToggleItem(
+                iconRes = R.drawable.rounded_timer_24,
+                title = stringResource(R.string.island_timeout_after_marquee_title),
+                isChecked = viewModel.isIslandTimeoutAfterMarquee.value,
+                onCheckedChange = { checked ->
+                    HapticUtil.performVirtualKeyHaptic(view)
+                    viewModel.setIslandTimeoutAfterMarquee(checked)
+                },
             )
 
             val infinityText = stringResource(R.string.island_timeout_infinity)
@@ -708,8 +1080,8 @@ fun IslandBehaviorSettingsUI(
                     .padding(top = 12.dp)
                     .highlight(highlightSetting == "island_show_when" || highlightSetting == "island_hide_when_screen_off"),
             ) {
-                Text(
-                    text = stringResource(R.string.island_show_when_title),
+                TranslatableText(
+                    stringResId = R.string.island_show_when_title,
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(horizontal = 16.dp),
@@ -736,51 +1108,6 @@ fun IslandBehaviorSettingsUI(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-        }
-
-        RoundedCardContainer(
-            spacing = 2.dp,
-            cornerRadius = 24.dp,
-        ) {
-            IconToggleItem(
-                iconRes = R.drawable.rounded_notifications_unread_24,
-                title = stringResource(R.string.island_secondary_bubble_title),
-                isChecked = viewModel.isIslandSecondaryBubble.value,
-                onCheckedChange = { checked ->
-                    HapticUtil.performVirtualKeyHaptic(view)
-                    viewModel.setIslandSecondaryBubble(checked)
-                },
-                modifier = Modifier.highlight(highlightSetting == "island_secondary_bubble"),
-            )
-
-            val secondaryStyle = viewModel.islandNotifQueueStyle.value
-            val stackLabel = stringResource(R.string.island_notif_queue_style_stack)
-            val overlapLabel = stringResource(R.string.island_notif_queue_style_overlap)
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surfaceBright, MaterialTheme.shapes.extraSmall)
-                    .padding(top = 12.dp)
-                    .highlight(highlightSetting == "island_secondary_style"),
-            ) {
-                Text(
-                    text = stringResource(R.string.island_secondary_style_title),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                )
-                SegmentedPicker(
-                    items = listOf(
-                        SettingsRepository.ISLAND_NOTIF_QUEUE_STYLE_STACK,
-                        SettingsRepository.ISLAND_NOTIF_QUEUE_STYLE_OVERLAP,
-                    ),
-                    selectedItem = secondaryStyle,
-                    onItemSelected = { viewModel.setIslandNotifQueueStyle(it) },
-                    labelProvider = { if (it == SettingsRepository.ISLAND_NOTIF_QUEUE_STYLE_OVERLAP) overlapLabel else stackLabel },
-                    title = R.string.island_secondary_style_title,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
 
             IconToggleItem(
                 iconRes = R.drawable.rounded_motion_play_24,
@@ -793,28 +1120,65 @@ fun IslandBehaviorSettingsUI(
                 },
                 modifier = Modifier.highlight(highlightSetting == "island_line_stage_enabled"),
             )
+        }
 
+        IslandSettingsSection(R.string.island_secondary_bubble_title) {
             IconToggleItem(
-                iconRes = R.drawable.rounded_format_align_center_24,
-                title = stringResource(R.string.island_balance_compact_title),
-                isChecked = viewModel.isIslandBalanceCompact.value,
+                iconRes = R.drawable.rounded_notifications_unread_24,
+                title = stringResource(R.string.island_secondary_bubble_title),
+                isChecked = viewModel.isIslandSecondaryBubble.value,
                 onCheckedChange = { checked ->
                     HapticUtil.performVirtualKeyHaptic(view)
-                    viewModel.setIslandBalanceCompact(checked)
+                    viewModel.setIslandSecondaryBubble(checked)
                 },
-                modifier = Modifier.highlight(highlightSetting == "island_balance_compact"),
+                modifier = Modifier.highlight(highlightSetting == "island_secondary_bubble"),
             )
 
-            IconToggleItem(
-                iconRes = R.drawable.rounded_touch_app_24,
-                title = stringResource(R.string.island_dismiss_on_outside_title),
-                isChecked = viewModel.isIslandDismissOnOutside.value,
-                onCheckedChange = { checked ->
-                    HapticUtil.performVirtualKeyHaptic(view)
-                    viewModel.setIslandDismissOnOutside(checked)
+            val sideEnabled = viewModel.islandCameraPosition.value == SettingsRepository.ISLAND_CAMERA_POSITION_CENTER
+            val sideLeftLabel = stringResource(R.string.island_camera_position_left)
+            val sideRightLabel = stringResource(R.string.island_camera_position_right)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceBright, MaterialTheme.shapes.extraSmall)
+                    .padding(top = 12.dp)
+                    .highlight(highlightSetting == "island_secondary_bubble_side")
+                    .alpha(if (sideEnabled) 1f else 0.38f),
+            ) {
+                TranslatableText(
+                    stringResId = R.string.island_secondary_bubble_side_title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+                SegmentedPicker(
+                    items = listOf(
+                        SettingsRepository.ISLAND_CAMERA_POSITION_LEFT,
+                        SettingsRepository.ISLAND_CAMERA_POSITION_RIGHT,
+                    ),
+                    selectedItem = viewModel.islandSecondaryBubbleSide.value,
+                    onItemSelected = { if (sideEnabled) viewModel.setIslandSecondaryBubbleSide(it) },
+                    labelProvider = { if (it == SettingsRepository.ISLAND_CAMERA_POSITION_RIGHT) sideRightLabel else sideLeftLabel },
+                    title = R.string.island_secondary_bubble_side_title,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            val autoLabel = stringResource(R.string.island_notif_hub_icons_auto)
+            ConfigSliderItem(
+                title = stringResource(R.string.island_secondary_bubbles_count_title),
+                value = viewModel.islandNotifHubIcons.intValue.toFloat(),
+                onValueChange = {
+                    HapticUtil.performUIHaptic(view)
+                    viewModel.setIslandNotifHubIcons(it.toInt())
                 },
-                modifier = Modifier.highlight(highlightSetting == "island_dismiss_on_outside"),
+                valueRange = 0f..8f,
+                increment = 1f,
+                iconRes = R.drawable.rounded_notifications_unread_24,
+                valueFormatter = { if (it.toInt() == 0) autoLabel else it.toInt().toString() },
+                modifier = Modifier.highlight(highlightSetting == "island_secondary_bubbles_count"),
             )
+
         }
 
         IslandSettingsSection(R.string.island_section_hiding) {
@@ -827,6 +1191,18 @@ fun IslandBehaviorSettingsUI(
                     viewModel.setIslandHideInOwnerApp(checked)
                 },
                 modifier = Modifier.highlight(highlightSetting == "island_hide_in_owner_app"),
+            )
+
+            IconToggleItem(
+                iconRes = R.drawable.rounded_music_note_24,
+                title = stringResource(R.string.island_hide_media_in_owner_app_title),
+                isChecked = viewModel.isIslandHideInOwnerApp.value || viewModel.isIslandHideMediaInOwnerApp.value,
+                enabled = !viewModel.isIslandHideInOwnerApp.value,
+                onCheckedChange = { checked ->
+                    HapticUtil.performVirtualKeyHaptic(view)
+                    viewModel.setIslandHideMediaInOwnerApp(checked)
+                },
+                modifier = Modifier.highlight(highlightSetting == "island_hide_media_in_owner_app"),
             )
 
             IconToggleItem(
@@ -996,8 +1372,8 @@ fun IslandPreviewControls(modifier: Modifier = Modifier) {
                 .background(MaterialTheme.colorScheme.surfaceBright, MaterialTheme.shapes.extraSmall)
                 .padding(top = 12.dp),
         ) {
-            Text(
-                text = stringResource(R.string.island_preview_stage_title),
+            TranslatableText(
+                stringResId = R.string.island_preview_stage_title,
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(horizontal = 16.dp),
@@ -1038,6 +1414,7 @@ fun IslandNotificationSettingsUI(
     val view = LocalView.current
     var showFilterAppsSheet by remember { mutableStateOf(false) }
     var showHubSheet by remember { mutableStateOf(false) }
+    var showPulseShadowSheet by remember { mutableStateOf(false) }
     var showOtpPermissions by remember { mutableStateOf(false) }
     var lockedDisabled by remember {
         mutableStateOf(
@@ -1073,17 +1450,6 @@ fun IslandNotificationSettingsUI(
                 modifier = Modifier.highlight(highlightSetting == "island_show_notifications"),
             )
 
-            IconToggleItem(
-                iconRes = R.drawable.rounded_touch_app_24,
-                title = stringResource(R.string.island_notif_tap_to_open_title),
-                description = stringResource(R.string.island_notif_tap_to_open_desc),
-                isChecked = viewModel.isIslandNotifTapToOpen.value,
-                onCheckedChange = { checked ->
-                    HapticUtil.performVirtualKeyHaptic(view)
-                    viewModel.setIslandNotifTapToOpen(checked)
-                },
-                modifier = Modifier.highlight(highlightSetting == "island_notif_tap_to_open"),
-            )
         }
 
         RoundedCardContainer(
@@ -1156,18 +1522,6 @@ fun IslandNotificationSettingsUI(
                 },
                 modifier = Modifier.highlight(highlightSetting == "island_notif_follow_dnd"),
             )
-
-            IconToggleItem(
-                iconRes = R.drawable.rounded_downloading_24,
-                title = stringResource(R.string.island_notif_keep_progress_title),
-                description = stringResource(R.string.island_notif_keep_progress_desc),
-                isChecked = viewModel.isIslandNotifKeepProgress.value,
-                onCheckedChange = { checked ->
-                    HapticUtil.performVirtualKeyHaptic(view)
-                    viewModel.setIslandNotifKeepProgress(checked)
-                },
-                modifier = Modifier.highlight(highlightSetting == "island_notif_keep_progress"),
-            )
         }
 
         AnimatedVisibility(
@@ -1187,22 +1541,10 @@ fun IslandNotificationSettingsUI(
                         .padding(top = 12.dp)
                         .highlight(highlightSetting == "island_notif_peek_style"),
                 ) {
-                    Text(
-                        text = stringResource(R.string.island_notif_condensed_info_title),
+                    TranslatableText(
+                        stringResId = R.string.island_notif_condensed_info_title,
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                    )
-                    Text(
-                        text = stringResource(
-                            when (peekStyle) {
-                                SettingsRepository.ISLAND_NOTIF_PEEK_STYLE_COMPACT -> R.string.island_notif_condensed_info_desc
-                                SettingsRepository.ISLAND_NOTIF_PEEK_STYLE_EXPANDED -> R.string.island_notif_peek_style_expanded_desc
-                                else -> R.string.island_notif_peek_style_full_desc
-                            },
-                        ),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 16.dp),
                     )
                     SegmentedPicker(
@@ -1240,24 +1582,6 @@ fun IslandNotificationSettingsUI(
                 enabled = !viewModel.isIslandNotifHub.value,
                 modifier = Modifier.highlight(highlightSetting == "island_notif_queue"),
             )
-
-            AnimatedVisibility(
-                visible = viewModel.isIslandNotifQueue.value && !viewModel.isIslandNotifHub.value,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically(),
-            ) {
-                IconToggleItem(
-                    iconRes = R.drawable.rounded_fullscreen_portrait_24,
-                    title = stringResource(R.string.island_notif_queue_inline_title),
-                    description = stringResource(R.string.island_notif_queue_inline_desc),
-                    isChecked = viewModel.isIslandNotifQueueInline.value,
-                    onCheckedChange = { checked ->
-                        HapticUtil.performVirtualKeyHaptic(view)
-                        viewModel.setIslandNotifQueueInline(checked)
-                    },
-                    modifier = Modifier.highlight(highlightSetting == "island_notif_queue_inline"),
-                )
-            }
 
             IconToggleItem(
                 iconRes = R.drawable.rounded_notifications_unread_24,
@@ -1299,6 +1623,18 @@ fun IslandNotificationSettingsUI(
                     modifier = Modifier.highlight(highlightSetting == "island_catch_up_timeout"),
                 )
             }
+
+            IconToggleItem(
+                iconRes = R.drawable.rounded_blur_on_24,
+                title = stringResource(R.string.island_pulse_shadow_title),
+                isChecked = viewModel.isIslandPulseShadow.value,
+                onCheckedChange = { checked ->
+                    HapticUtil.performVirtualKeyHaptic(view)
+                    viewModel.setIslandPulseShadow(checked)
+                },
+                onSettingsClick = { showPulseShadowSheet = true },
+                modifier = Modifier.highlight(highlightSetting == "island_pulse_shadow_on_notification"),
+            )
         }
 
         if (showOtpPermissions) {
@@ -1385,42 +1721,50 @@ fun IslandNotificationSettingsUI(
             }
         }
 
-        if (rememberIslandShowsWhileLocked()) {
-            IslandSettingsSection(R.string.island_notif_section_lock_screen) {
-                IslandPrefToggle(
-                    settingKey = SettingsRepository.KEY_ISLAND_NOTIF_DISABLE_LOCKED,
-                    iconRes = R.drawable.rounded_notifications_off_24,
-                    title = stringResource(R.string.label_disabled),
-                    defaultValue = true,
-                    onChanged = { lockedDisabled = it },
-                )
-                AnimatedVisibility(
-                    visible = !lockedDisabled,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically(),
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        val showsWhileLocked = rememberIslandShowsWhileLocked()
+        IslandSettingsSection(R.string.island_notif_section_lock_screen) {
+            IslandPrefToggle(
+                settingKey = SettingsRepository.KEY_ISLAND_NOTIF_DISABLE_LOCKED,
+                iconRes = R.drawable.rounded_notifications_off_24,
+                title = stringResource(R.string.island_notif_lock_hidden_title),
+                defaultValue = true,
+                enabled = showsWhileLocked,
+                forceChecked = !showsWhileLocked,
+                onChanged = { lockedDisabled = it },
+            )
+            AnimatedVisibility(
+                visible = showsWhileLocked && !lockedDisabled,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    IslandPrefToggle(
+                        settingKey = SettingsRepository.KEY_ISLAND_NOTIF_CONCEAL_LOCKED,
+                        iconRes = R.drawable.rounded_visibility_off_24,
+                        title = stringResource(R.string.island_notif_conceal_locked_title),
+                        onChanged = { concealed = it },
+                    )
+                    AnimatedVisibility(
+                        visible = concealed,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically(),
+                    ) {
                         IslandPrefToggle(
-                            settingKey = SettingsRepository.KEY_ISLAND_NOTIF_CONCEAL_LOCKED,
-                            iconRes = R.drawable.rounded_visibility_off_24,
-                            title = stringResource(R.string.island_notif_conceal_locked_title),
-                            onChanged = { concealed = it },
+                            settingKey = SettingsRepository.KEY_ISLAND_NOTIF_CONCEAL_CHAT_PICTURES,
+                            iconRes = R.drawable.rounded_person_24,
+                            title = stringResource(R.string.island_notif_conceal_chat_pictures_title),
                         )
-                        AnimatedVisibility(
-                            visible = concealed,
-                            enter = fadeIn() + expandVertically(),
-                            exit = fadeOut() + shrinkVertically(),
-                        ) {
-                            IslandPrefToggle(
-                                settingKey = SettingsRepository.KEY_ISLAND_NOTIF_CONCEAL_CHAT_PICTURES,
-                                iconRes = R.drawable.rounded_person_24,
-                                title = stringResource(R.string.island_notif_conceal_chat_pictures_title),
-                            )
-                        }
                     }
                 }
             }
         }
+    }
+
+    if (showPulseShadowSheet) {
+        IslandPulseShadowOptionsBottomSheet(
+            viewModel = viewModel,
+            onDismissRequest = { showPulseShadowSheet = false },
+        )
     }
 
     if (showHubSheet) {
@@ -1443,10 +1787,10 @@ fun IslandNotificationSettingsUI(
 }
 
 @Composable
-private fun IslandSettingsSection(titleRes: Int, content: @Composable ColumnScope.() -> Unit) {
+internal fun IslandSettingsSection(titleRes: Int, content: @Composable ColumnScope.() -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = stringResource(titleRes),
+        TranslatableText(
+            stringResId = titleRes,
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 8.dp),

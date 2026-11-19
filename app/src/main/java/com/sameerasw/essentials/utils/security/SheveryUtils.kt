@@ -12,7 +12,6 @@ package com.sameerasw.essentials.utils
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.IBinder
 import com.hamondev.shevery.api.SheveryApiConstants
 import com.hamondev.shevery.api.SheveryPrivilege
@@ -30,30 +29,31 @@ object SheveryUtils {
 
     fun isSheveryInstalled(context: Context): Boolean =
         runCatching {
-            context.packageManager.getPermissionInfo(SheveryProvider.PERMISSION, 0) != null
+            context.packageManager.getPermissionInfo(SheveryProvider.PERMISSION, 0).packageName == SHEVERY_PACKAGE
         }.getOrDefault(false) ||
         runCatching {
             context.packageManager.getPackageInfo(SHEVERY_PACKAGE, 0)
             true
         }.getOrDefault(false)
 
-    fun isSheveryAvailable(): Boolean =
-        try {
-            SheveryPrivilege.pingBinder()
-        } catch (_: Throwable) {
-            false
-        }
+    fun isSheveryAvailable(context: Context = EssentialsApp.context): Boolean =
+        isSheveryInstalled(context) && runCatching {
+            // The SDK can also sync its binder from Shizuku or Porter.
+            SheveryPrivilege.pingBinder() &&
+                SheveryPrivilege.getVersion() >= SheveryApiConstants.SERVER_VERSION
+        }.getOrDefault(false)
 
     fun hasPermission(): Boolean {
         if (!isSheveryAvailable()) return false
         return try {
-            SheveryPrivilege.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
+            SheveryPrivilege.isGranted()
         } catch (_: Throwable) {
             false
         }
     }
 
     fun requestPermission(requestCode: Int = 1004) {
+        if (!isSheveryAvailable()) return
         try {
             SheveryPrivilege.requestPermission(requestCode)
         } catch (_: Throwable) {
@@ -61,9 +61,8 @@ object SheveryUtils {
     }
 
     fun initialize(context: Context) {
-        try {
-            SheveryPrivilege.connectFast(context)
-        } catch (_: Throwable) {
+        if (isSheveryInstalled(context)) {
+            runCatching { SheveryPrivilege.connectFast(context) }
         }
         SheveryPrivilege.addBinderReceivedListenerSticky {
             try {
@@ -77,10 +76,9 @@ object SheveryUtils {
     }
 
     fun runCommand(command: String) {
-        if (!hasPermission() || !isSheveryAvailable()) return
+        if (!hasPermission()) return
         try {
-            val process = SheveryPrivilege.newProcess(arrayOf("sh", "-c", command), null, "/")
-            process?.waitFor()
+            SheveryPrivilege.execFast(arrayOf("sh", "-c", command), null, "/", SheveryApiConstants.EXEC_FAST_DEFAULT_TIMEOUT_MS)
         } catch (_: Throwable) {
         }
     }
@@ -90,7 +88,7 @@ object SheveryUtils {
         env: Array<String>? = null,
         dir: String? = null,
     ): Process? {
-        if (!hasPermission() || !isSheveryAvailable()) return null
+        if (!hasPermission()) return null
         return try {
             SheveryPrivilege.newProcess(cmd, env, dir)
         } catch (_: Throwable) {
@@ -99,10 +97,9 @@ object SheveryUtils {
     }
 
     fun grantWriteSecureSettingsPermission(): Boolean {
-        if (!hasPermission() || !isSheveryAvailable()) return false
+        if (!hasPermission()) return false
         return try {
-            val pkg = EssentialsApp.context.packageName
-            runCommand("pm grant $pkg android.permission.WRITE_SECURE_SETTINGS")
+            runCommand("pm grant com.sameerasw.essentials android.permission.WRITE_SECURE_SETTINGS")
             true
         } catch (_: Throwable) {
             false
@@ -110,10 +107,9 @@ object SheveryUtils {
     }
 
     fun grantBatteryStatsPermission(): Boolean {
-        if (!hasPermission() || !isSheveryAvailable()) return false
+        if (!hasPermission()) return false
         return try {
-            val pkg = EssentialsApp.context.packageName
-            runCommand("pm grant $pkg android.permission.BATTERY_STATS")
+            runCommand("pm grant com.sameerasw.essentials android.permission.BATTERY_STATS")
             true
         } catch (_: Throwable) {
             false
@@ -121,7 +117,7 @@ object SheveryUtils {
     }
 
     fun getSystemBinder(name: String): IBinder? {
-        if (!hasPermission() || !isSheveryAvailable()) return null
+        if (!hasPermission()) return null
         return try {
             SheveryPrivilege.getSystemService(name)
         } catch (_: Throwable) {

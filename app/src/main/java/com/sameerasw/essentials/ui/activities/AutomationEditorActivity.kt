@@ -10,6 +10,7 @@
 package com.sameerasw.essentials.ui.activities
 
 import androidx.compose.ui.platform.LocalContext
+import com.sameerasw.essentials.translation.TranslatableText
 import com.sameerasw.essentials.ui.navigation.findFragmentActivity
 import com.sameerasw.essentials.ui.navigation.ProvideBottomBar
 import com.sameerasw.essentials.ui.navigation.BottomBarSpec
@@ -92,9 +93,11 @@ import com.sameerasw.essentials.data.repository.SettingsRepository
 import com.sameerasw.essentials.domain.diy.Action
 import com.sameerasw.essentials.domain.diy.ActionRegistry
 import com.sameerasw.essentials.domain.diy.Automation
-import com.sameerasw.essentials.domain.model.AppPermission
+import com.sameerasw.essentials.domain.diy.Comparison
 import com.sameerasw.essentials.domain.diy.DIYRepository
+import com.sameerasw.essentials.domain.diy.Metric
 import com.sameerasw.essentials.domain.diy.Trigger
+import com.sameerasw.essentials.domain.model.AppPermission
 import com.sameerasw.essentials.domain.model.AppSelection
 import com.sameerasw.essentials.domain.model.NotificationApp
 import com.sameerasw.essentials.ui.components.CategoryExpandableSection
@@ -104,6 +107,7 @@ import com.sameerasw.essentials.ui.core.containers.RoundedCardContainer
 import com.sameerasw.essentials.ui.core.pickers.SegmentedPicker
 import com.sameerasw.essentials.ui.core.sheets.BluetoothDeviceSelectionSheet
 import com.sameerasw.essentials.ui.core.sheets.NotificationTriggerSheet
+import com.sameerasw.essentials.ui.core.sheets.SystemMetricSheet
 import com.sameerasw.essentials.ui.core.sheets.WifiNetworkSelectionSheet
 import com.sameerasw.essentials.ui.features.location.sheets.LocationTriggerSheet
 import com.sameerasw.essentials.ui.features.system.ActionSequenceEditor
@@ -193,7 +197,25 @@ fun AutomationEditorScreen(
         // State for selections
         // Initialize with existing data or defaults
         var selectedTrigger by remember { mutableStateOf<Trigger?>(existingAutomation?.trigger) }
-        var selectedState by remember { mutableStateOf<DIYState?>(existingAutomation?.state) }
+        var selectedState by remember {
+            val state = existingAutomation?.state
+            val initial =
+                if (state is DIYState.BatteryLevel) {
+                    DIYState.SystemMetric(
+                        metric = Metric.BATTERY_LEVEL,
+                        comparison =
+                            Comparison(
+                                operator = Comparison.Operator.BETWEEN,
+                                value = state.minLevel.toDouble(),
+                                upper = state.maxLevel.toDouble(),
+                                hysteresis = 0.0,
+                            ),
+                    )
+                } else {
+                    state
+                }
+            mutableStateOf<DIYState?>(initial)
+        }
         var selectedApps by remember {
             mutableStateOf<List<String>>(
                 existingAutomation?.selectedApps ?: emptyList(),
@@ -343,10 +365,10 @@ fun AutomationEditorScreen(
         // Config Sheets
         var showTimeSettings by remember { mutableStateOf(false) }
         var showCalendarStateSettings by remember { mutableStateOf(false) }
-        var showBatteryLevelSettings by remember { mutableStateOf(false) }
         var showBluetoothSettings by remember { mutableStateOf(false) }
         var showWifiSettings by remember { mutableStateOf(false) }
         var showNotificationTriggerSettings by remember { mutableStateOf(false) }
+        var showSystemMetricSettings by remember { mutableStateOf(false) }
         var editingLocationTrigger by remember { mutableStateOf<Trigger?>(null) }
 
         val isTriggerConfigured =
@@ -430,8 +452,8 @@ fun AutomationEditorScreen(
         if (showDiscardDialog) {
             AlertDialog(
                 onDismissRequest = { showDiscardDialog = false },
-                title = { Text(stringResource(R.string.diy_discard_warning_title)) },
-                text = { Text(stringResource(R.string.diy_discard_warning_desc)) },
+                title = { TranslatableText(R.string.diy_discard_warning_title) },
+                text = { TranslatableText(R.string.diy_discard_warning_desc) },
                 confirmButton = {
                     TextButton(
                         onClick = {
@@ -440,8 +462,8 @@ fun AutomationEditorScreen(
                             onBack()
                         },
                     ) {
-                        Text(
-                            text = stringResource(R.string.translation_discard),
+                        TranslatableText(
+                            stringResId = R.string.translation_discard,
                             color = MaterialTheme.colorScheme.error,
                         )
                     }
@@ -453,7 +475,7 @@ fun AutomationEditorScreen(
                             showDiscardDialog = false
                         },
                     ) {
-                        Text(stringResource(R.string.action_cancel))
+                        TranslatableText(R.string.action_cancel)
                     }
                 },
             )
@@ -689,8 +711,8 @@ fun AutomationEditorScreen(
                                         verticalArrangement = Arrangement.spacedBy(16.dp),
                                     ) {
                                         Spacer(modifier = Modifier.height(statusBarHeight + 4.dp))
-                                        Text(
-                                            text = stringResource(R.string.diy_create_app_title),
+                                        TranslatableText(
+                                            stringResId = R.string.diy_create_app_title,
                                             style = MaterialTheme.typography.titleLarge,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.onSurface,
@@ -708,7 +730,7 @@ fun AutomationEditorScreen(
                                             value = searchQuery,
                                             onValueChange = { searchQuery = it },
                                             modifier = Modifier.fillMaxWidth(),
-                                            placeholder = { Text(stringResource(R.string.label_search)) },
+                                            placeholder = { TranslatableText(R.string.label_search) },
                                             leadingIcon = {
                                                 Icon(
                                                     painter = painterResource(id = R.drawable.rounded_search_24),
@@ -738,8 +760,8 @@ fun AutomationEditorScreen(
                                                 modifier = Modifier.size(24.dp),
                                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                             )
-                                            Text(
-                                                text = stringResource(R.string.toggle_show_system_apps),
+                                            TranslatableText(
+                                                stringResId = R.string.toggle_show_system_apps,
                                                 style = MaterialTheme.typography.bodyLarge,
                                                 modifier = Modifier.weight(1f),
                                                 color = MaterialTheme.colorScheme.onSurface,
@@ -816,8 +838,8 @@ fun AutomationEditorScreen(
                                         verticalArrangement = Arrangement.spacedBy(16.dp),
                                     ) {
                                         Spacer(modifier = Modifier.height(statusBarHeight + 4.dp))
-                                        Text(
-                                            text = stringResource(R.string.diy_select_trigger),
+                                        TranslatableText(
+                                            stringResId = R.string.diy_select_trigger,
                                             style = MaterialTheme.typography.titleLarge,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.onSurface,
@@ -896,8 +918,8 @@ fun AutomationEditorScreen(
                                         verticalArrangement = Arrangement.spacedBy(16.dp),
                                     ) {
                                         Spacer(modifier = Modifier.height(statusBarHeight + 4.dp))
-                                        Text(
-                                            text = stringResource(R.string.diy_select_trigger),
+                                        TranslatableText(
+                                            stringResId = R.string.diy_select_trigger,
                                             style = MaterialTheme.typography.titleLarge,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.onSurface,
@@ -987,6 +1009,11 @@ fun AutomationEditorScreen(
                                                                 Trigger.ChargerDisconnected,
                                                                 Trigger.PowerSavingOn,
                                                                 Trigger.PowerSavingOff,
+                                                                (selectedTrigger as? Trigger.SystemMetric)?.takeIf {
+                                                                    it.metric ==
+                                                                        Metric.BATTERY_LEVEL
+                                                                }
+                                                                    ?: Trigger.SystemMetric(metric = Metric.BATTERY_LEVEL),
                                                             ),
                                                         R.string.diy_category_connectivity to
                                                             listOf(
@@ -1046,7 +1073,12 @@ fun AutomationEditorScreen(
                                                         .firstOrNull { (_, list) ->
                                                             list.any {
                                                                 selectedTrigger != null &&
-                                                                    it::class == selectedTrigger!!::class
+                                                                    it::class == selectedTrigger!!::class &&
+                                                                    (
+                                                                        it !is Trigger.SystemMetric ||
+                                                                            (selectedTrigger as? Trigger.SystemMetric)?.metric ==
+                                                                            it.metric
+                                                                    )
                                                             }
                                                         }?.first ?: triggerCategories.firstOrNull()?.first,
                                                 )
@@ -1070,7 +1102,13 @@ fun AutomationEditorScreen(
                                                 ) {
                                                     triggerList.forEach { trigger ->
                                                         val isSelected =
-                                                            selectedTrigger != null && selectedTrigger!!::class == trigger::class
+                                                            selectedTrigger != null &&
+                                                                selectedTrigger!!::class == trigger::class &&
+                                                                (
+                                                                    trigger !is Trigger.SystemMetric ||
+                                                                        (selectedTrigger as? Trigger.SystemMetric)?.metric ==
+                                                                        trigger.metric
+                                                                )
                                                         EditorActionItem(
                                                             title = stringResource(trigger.title),
                                                             iconRes = trigger.icon,
@@ -1094,6 +1132,10 @@ fun AutomationEditorScreen(
                                                                             true
                                                                     is Trigger.NotificationReceived -> showNotificationTriggerSettings = true
                                                                     is Trigger.ArriveAtLocation, is Trigger.LeaveLocation -> editingLocationTrigger = trigger
+                                                                    is Trigger.SystemMetric -> {
+                                                                        selectedTrigger = trigger
+                                                                        showSystemMetricSettings = true
+                                                                    }
                                                                     else -> {}
                                                                 }
                                                             },
@@ -1109,7 +1151,11 @@ fun AutomationEditorScreen(
                                                             listOf(
                                                                 DIYState.Charging,
                                                                 DIYState.PowerSaving,
-                                                                (selectedState as? DIYState.BatteryLevel) ?: DIYState.BatteryLevel(),
+                                                                (selectedState as? DIYState.SystemMetric)?.takeIf {
+                                                                    it.metric ==
+                                                                        Metric.BATTERY_LEVEL
+                                                                }
+                                                                    ?: DIYState.SystemMetric(metric = Metric.BATTERY_LEVEL),
                                                             ),
                                                         R.string.diy_category_system_screen to
                                                             listOf(
@@ -1141,7 +1187,13 @@ fun AutomationEditorScreen(
                                                     stateCategories
                                                         .firstOrNull { (_, list) ->
                                                             list.any {
-                                                                selectedState != null && it::class == selectedState!!::class
+                                                                selectedState != null &&
+                                                                    it::class == selectedState!!::class &&
+                                                                    (
+                                                                        it !is DIYState.SystemMetric ||
+                                                                            (selectedState as? DIYState.SystemMetric)?.metric ==
+                                                                            it.metric
+                                                                    )
                                                             }
                                                         }?.first ?: stateCategories.firstOrNull()?.first,
                                                 )
@@ -1165,24 +1217,33 @@ fun AutomationEditorScreen(
                                                 ) {
                                                     stateList.forEach { state ->
                                                         val isSelected =
-                                                            selectedState != null && selectedState!!::class == state::class
+                                                            selectedState != null &&
+                                                                selectedState!!::class == state::class &&
+                                                                (
+                                                                    state !is DIYState.SystemMetric ||
+                                                                        (selectedState as? DIYState.SystemMetric)?.metric ==
+                                                                        state.metric
+                                                                )
                                                         EditorActionItem(
                                                             title = stringResource(state.title),
                                                             iconRes = state.icon,
                                                             isSelected = isSelected,
                                                             onClick = { selectedState = state },
-                                                            isConfigurable = state is DIYState.TimePeriod || state is DIYState.CalendarEvent || state is DIYState.BatteryLevel,
+                                                            isConfigurable =
+                                                                state is DIYState.TimePeriod ||
+                                                                    state is DIYState.CalendarEvent ||
+                                                                    state is DIYState.SystemMetric,
                                                             onSettingsClick = {
                                                                 if (state is DIYState.TimePeriod) {
                                                                     showTimeSettings = true
                                                                 }
-                                                                if (state is DIYState.BatteryLevel) {
-                                                                    selectedState = state
-                                                                    showBatteryLevelSettings = true
-                                                                }
                                                                 if (state is DIYState.CalendarEvent) {
                                                                     selectedState = state
                                                                     showCalendarStateSettings = true
+                                                                }
+                                                                if (state is DIYState.SystemMetric) {
+                                                                    selectedState = state
+                                                                    showSystemMetricSettings = true
                                                                 }
                                                             },
                                                         )
@@ -1211,8 +1272,8 @@ fun AutomationEditorScreen(
                                     verticalArrangement = Arrangement.spacedBy(16.dp),
                                 ) {
                                     Spacer(modifier = Modifier.height(statusBarHeight + 4.dp))
-                                    Text(
-                                        text = stringResource(R.string.diy_select_action),
+                                    TranslatableText(
+                                        stringResId = R.string.diy_select_action,
                                         style = MaterialTheme.typography.titleLarge,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.onSurface,
@@ -1302,10 +1363,12 @@ fun AutomationEditorScreen(
                         }
                     }
 
-                    if (showBatteryLevelSettings) {
-                        com.sameerasw.essentials.ui.core.sheets.BatteryLevelStateSheet(
-                            initialState = selectedState as? DIYState.BatteryLevel,
-                            onDismiss = { showBatteryLevelSettings = false },
+                    if (showSystemMetricSettings) {
+                        SystemMetricSheet(
+                            initialTrigger = selectedTrigger as? Trigger.SystemMetric,
+                            initialState = selectedState as? DIYState.SystemMetric,
+                            onDismiss = { showSystemMetricSettings = false },
+                            onTriggerChange = { selectedTrigger = it },
                             onStateChange = { selectedState = it },
                         )
                     }
@@ -1519,14 +1582,14 @@ private fun AutomationTypePicker(
                     FilterChip(
                         selected = isSelected,
                         onClick = { if (!isSelected) onSelected(type) },
-                        label = { Text(stringResource(label)) },
+                        label = { TranslatableText(label) },
                     )
                 } else if (type != Automation.Type.PIXEL_SEARCHBAR) {
                     FilterChip(
                         selected = false,
                         onClick = {},
                         enabled = false,
-                        label = { Text(stringResource(label)) },
+                        label = { TranslatableText(label) },
                     )
                 }
             }

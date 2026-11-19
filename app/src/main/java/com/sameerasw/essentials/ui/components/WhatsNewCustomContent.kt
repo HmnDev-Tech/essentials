@@ -43,6 +43,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sameerasw.essentials.R
+import com.sameerasw.essentials.island.remote.OvercastLink
+import com.sameerasw.essentials.translation.TranslatableText
 import com.sameerasw.essentials.ui.core.cards.IconToggleItem
 import com.sameerasw.essentials.ui.core.containers.RoundedCardContainer
 import com.sameerasw.essentials.ui.theme.GoogleSansFlexRounded
@@ -58,6 +60,7 @@ fun WhatsNewCustomContent(
 ) {
     val context = LocalContext.current
     val view = LocalView.current
+    val overcastInstalled = OvercastLink.isInstalled(context)
     var expandedSection by rememberSaveable { mutableStateOf<Int?>(null) }
 
     LifecycleResumeEffect(Unit) {
@@ -74,17 +77,85 @@ fun WhatsNewCustomContent(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        ShakeForHelpCard(
+        WhatsNewSectionCard(
+            title = stringResource(R.string.whats_new_overcast_title),
+            summary = stringResource(R.string.whats_new_overcast_summary),
             expanded = expandedSection == 0,
             onToggle = { toggle(0) },
-            mainViewModel = mainViewModel,
-        )
+            icon = { SectionIcon(R.drawable.overcast_logo, tinted = false) },
+        ) {
+            Text(
+                text = stringResource(R.string.whats_new_overcast_desc),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            StackedActionCard(
+                iconRes = R.drawable.rounded_cloud_24,
+                title = "Overcast",
+                description = if (overcastInstalled) stringResource(R.string.whats_new_overcast_installed) else stringResource(R.string.label_not_installed),
+                actionLabel = if (overcastInstalled) stringResource(R.string.label_open_with) else stringResource(R.string.whats_new_overcast_get),
+                actionIconRes = if (overcastInstalled) R.drawable.rounded_open_in_new_24 else R.drawable.rounded_download_24,
+                isPrimaryAction = !overcastInstalled,
+                onAction = {
+                    if (overcastInstalled) OvercastLink.openApp(context) else OvercastLink.openInstallPage(context)
+                },
+            )
+        }
 
-        Text(
-            text = stringResource(R.string.whats_new_previous_updates),
+        WhatsNewSectionCard(
+            title = stringResource(R.string.whats_new_foldables_title),
+            summary = stringResource(R.string.whats_new_foldables_summary),
+            expanded = expandedSection == 3,
+            onToggle = { toggle(3) },
+            icon = { SectionIcon(R.drawable.rounded_tablet_android_24) },
+        ) {
+            Text(
+                text = stringResource(R.string.whats_new_foldables_desc),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = stringResource(R.string.whats_new_foldables_try),
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+
+        WhatsNewSectionCard(
+            title = stringResource(R.string.whats_new_island_title),
+            summary = stringResource(R.string.whats_new_island_summary),
+            expanded = expandedSection == 4,
+            onToggle = { toggle(4) },
+            icon = { SectionIcon(R.drawable.rounded_auto_awesome_24) },
+        ) {
+            Text(
+                text = stringResource(R.string.whats_new_island_desc),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = stringResource(R.string.whats_new_island_gestures),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = stringResource(R.string.whats_new_island_refinements),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        TranslatableText(
+            stringResId = R.string.whats_new_previous_updates,
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 8.dp, top = 8.dp),
+        )
+
+        ShakeForHelpCard(
+            expanded = expandedSection == 2,
+            onToggle = { toggle(2) },
+            mainViewModel = mainViewModel,
         )
 
         WhatsNewSectionCard(
@@ -94,8 +165,8 @@ fun WhatsNewCustomContent(
             onToggle = { toggle(1) },
             icon = { SectionIcon(R.drawable.rounded_watch_24) },
         ) {
-            Text(
-                text = stringResource(R.string.whats_new_watchface_desc),
+            TranslatableText(
+                stringResId = R.string.whats_new_watchface_desc,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -112,14 +183,14 @@ fun ShakeForHelpCard(
 ) {
     val context = LocalContext.current
     WhatsNewSectionCard(
-        title = "New: Shake to get help",
-        summary = "Shake your phone for instant help",
+        title = stringResource(R.string.label_shake_for_help),
+        summary = stringResource(R.string.whats_new_shake_summary),
         expanded = expanded,
         onToggle = onToggle,
         icon = { SectionIcon(R.drawable.rounded_mobile_vibrate_24) },
     ) {
         Text(
-            text = "Shake your phone anywhere in Essentials to open help for the screen you are on. Inside a feature you get that feature's guide, and everywhere else you get the general Help and Guides.",
+            text = stringResource(R.string.whats_new_shake_desc),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -134,7 +205,7 @@ fun ShakeForHelpCard(
         }
 
         Text(
-            text = "Give your phone a shake now to try it!",
+            text = stringResource(R.string.whats_new_shake_try),
             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
             color = MaterialTheme.colorScheme.primary,
         )

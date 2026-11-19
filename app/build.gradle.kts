@@ -115,12 +115,12 @@ android {
         applicationId = "io.essentials.hmncat"
         minSdk = 26
         targetSdk = 37
-        versionCode = 71
-        versionName = "20.3-beta.1"
+        versionCode = 75
+        versionName = "21.4-beta.1"
 
         val whatsNewCounter = 8
         buildConfigField("int", "WHATS_NEW_COUNTER", whatsNewCounter.toString())
-        buildConfigField("int", "REQUIRED_WEAR_VERSION_CODE", "7")
+        buildConfigField("int", "REQUIRED_WEAR_VERSION_CODE", "8")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -208,9 +208,12 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 
     // Shizuku
-    implementation(libs.shizuku.api)
-    implementation(libs.shizuku.provider)
-    implementation("com.github.d4rken-org.porter-api:shizuku-bridge:+")
+    // The published Shevery SDK also supplies the Shizuku client and provider.
+    implementation(libs.shevery.api)
+    implementation(libs.shevery.provider)
+    implementation("com.github.d4rken-org.porter-api:shizuku-bridge:0.9.0") {
+        exclude(group = "dev.rikka.shizuku")
+    }
     implementation(libs.androidx.car.app)
 
     // Hidden API Bypass
@@ -225,7 +228,6 @@ dependencies {
 
     // Volume Long Press
     implementation(libs.kotlinx.coroutines.android)
-    implementation(libs.api.v1315)
 
     // Google Maps & Location
     implementation(libs.play.services.location)

@@ -9,6 +9,7 @@
 
 package com.sameerasw.essentials.services.dreams
 
+import androidx.core.content.ContextCompat
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -217,7 +218,7 @@ class AmbientDreamService : DreamService() {
 
         // Register receiver
         val filter = IntentFilter("SHOW_AMBIENT_GLANCE")
-        registerReceiver(receiver, filter, RECEIVER_EXPORTED)
+        ContextCompat.registerReceiver(this, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
         isReceiverRegistered = true
 
         // Register Media Session Listener
@@ -1035,8 +1036,8 @@ class AmbientDreamService : DreamService() {
     }
 
     private fun updateMetadata(directBitmap: android.graphics.Bitmap? = null) {
-        titleView?.text = trackTitle ?: "Unknown Track"
-        artistView?.text = artistName ?: "Unknown Artist"
+        titleView?.text = trackTitle ?: getString(R.string.music_unknown_track)
+        artistView?.text = artistName ?: getString(R.string.music_unknown_artist)
         likeStatusView?.setImageResource(if (isAlreadyLiked) R.drawable.round_favorite_24 else R.drawable.rounded_favorite_24)
 
         // Update Dynamic Shape with Morphing

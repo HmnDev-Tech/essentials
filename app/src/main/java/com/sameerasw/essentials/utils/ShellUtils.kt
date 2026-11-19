@@ -39,7 +39,7 @@ object ShellUtils {
         val selected = getSelectedMode(context)
         if (selected != PrivilegedMode.AUTO) return selected
         return when {
-            SheveryUtils.isSheveryAvailable() -> PrivilegedMode.SHEVERY
+            SheveryUtils.isSheveryAvailable(context) -> PrivilegedMode.SHEVERY
             ShizukuUtils.isShizukuAvailable() -> PrivilegedMode.SHIZUKU
             SheveryUtils.isSheveryInstalled(context) -> PrivilegedMode.SHEVERY
             ShizukuUtils.isShizukuInstalled(context) -> PrivilegedMode.SHIZUKU
@@ -67,7 +67,7 @@ object ShellUtils {
     fun isAvailable(context: Context): Boolean =
         when (resolveMode(context)) {
             PrivilegedMode.ROOT -> RootUtils.isRootAvailable()
-            PrivilegedMode.SHEVERY -> SheveryUtils.isSheveryAvailable()
+            PrivilegedMode.SHEVERY -> SheveryUtils.isSheveryAvailable(context)
             else -> ShizukuUtils.isShizukuAvailable()
         }
 
@@ -102,7 +102,7 @@ object ShellUtils {
         if (isRootEnabled(context)) {
             RootUtils.runCommand(command)
         } else if (isSheveryEnabled(context)) {
-            if (!SheveryUtils.isSheveryAvailable()) {
+            if (!SheveryUtils.isSheveryAvailable(context)) {
                 if (notifyOnError) {
                     val message = if (!featureName.isNullOrBlank()) {
                         context.getString(R.string.shevery_not_running_feature_desc, featureName)
@@ -219,7 +219,7 @@ object ShellUtils {
         return if (isRootEnabled(context)) {
             RootUtils.newProcess(command)
         } else if (isSheveryEnabled(context)) {
-            if (!SheveryUtils.isSheveryAvailable()) {
+            if (!SheveryUtils.isSheveryAvailable(context)) {
                 if (notifyOnError) {
                     val message = if (!featureName.isNullOrBlank()) {
                         context.getString(R.string.shevery_not_running_feature_desc, featureName)

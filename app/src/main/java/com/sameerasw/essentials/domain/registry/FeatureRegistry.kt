@@ -11,6 +11,7 @@ package com.sameerasw.essentials.domain.registry
 
 import com.sameerasw.essentials.ui.features.display.ISLAND_BEHAVIOR_FEATURE_ID
 import com.sameerasw.essentials.ui.features.display.ISLAND_DURATION_FEATURE_ID
+import com.sameerasw.essentials.ui.features.display.ISLAND_INTERACTIONS_FEATURE_ID
 import com.sameerasw.essentials.ui.features.display.ISLAND_NOTIFICATIONS_FEATURE_ID
 import com.sameerasw.essentials.ui.features.display.ISLAND_PLACEMENT_FEATURE_ID
 import com.sameerasw.essentials.ui.features.display.ISLAND_VISUALS_FEATURE_ID
@@ -822,6 +823,11 @@ object FeatureRegistry {
                             "island_show_time_battery",
                         ),
                         SearchSetting(
+                            R.string.island_time_tap_opens_clock_title,
+                            R.string.island_show_time_title,
+                            "island_show_time_battery",
+                        ),
+                        SearchSetting(
                             R.string.island_show_battery_title,
                             R.string.island_battery_style_title,
                             "island_show_battery",
@@ -843,6 +849,11 @@ object FeatureRegistry {
                             "island_show_hotspot",
                         ),
                         SearchSetting(
+                            R.string.island_show_starlink_title,
+                            R.string.island_starlink_desc,
+                            "island_show_starlink",
+                        ),
+                        SearchSetting(
                             R.string.feat_caffeinate_title,
                             R.string.caffeinate_notification_desc,
                             "island_show_caffeinate",
@@ -858,9 +869,19 @@ object FeatureRegistry {
                             "island_show_alarm",
                         ),
                         SearchSetting(
+                            R.string.island_alarm_show_remaining_title,
+                            R.string.island_show_alarm_title,
+                            "island_show_alarm",
+                        ),
+                        SearchSetting(
                             R.string.island_show_sound_mode_title,
                             R.string.island_sound_mode_vibrate,
                             "island_show_sound_mode",
+                        ),
+                        SearchSetting(
+                            R.string.island_live_updates_title,
+                            R.string.island_notif_keep_progress_desc,
+                            "island_notif_keep_progress",
                         ),
                         SearchSetting(
                             R.string.island_brief_title,
@@ -888,6 +909,11 @@ object FeatureRegistry {
                             "island_notif_hub",
                         ),
                         SearchSetting(
+                            R.string.island_notif_themed_bubble_title,
+                            R.string.island_notif_hub_title,
+                            "island_notif_hub",
+                        ),
+                        SearchSetting(
                             R.string.island_show_calls_title,
                             R.string.island_call_incoming,
                             "island_show_calls",
@@ -907,15 +933,22 @@ object FeatureRegistry {
                             R.string.duo_show_media_title,
                             "island_media_show_like",
                         ),
+                        SearchSetting(
+                            R.string.island_show_on_update_title,
+                            R.string.island_providers_title,
+                            "island_provider_show_on_update",
+                        ),
                     ),
                 parentFeatureId = "Display",
+                contributors = listOf("Slayemus"),
+                creditsLabel = R.string.label_feature_designed_by,
             ) {
                 override fun isEnabled(viewModel: MainViewModel) = viewModel.isIslandEnabled.value
 
                 override fun isToggleEnabled(
                     viewModel: MainViewModel,
                     context: Context,
-                ) = viewModel.isAccessibilityEnabled.value && viewModel.isNotificationListenerEnabled.value
+                ) = viewModel.isAccessibilityEnabled.value
 
                 override fun onToggle(
                     viewModel: MainViewModel,
@@ -944,6 +977,16 @@ object FeatureRegistry {
                             R.string.island_camera_position_center,
                             "island_camera_position",
                         ),
+                        SearchSetting(
+                            R.string.island_statusbar_aware_width_title,
+                            R.string.island_section_placement,
+                            "island_statusbar_aware_width",
+                        ),
+                        SearchSetting(
+                            R.string.island_expanded_scale_title,
+                            R.string.island_expanded_scale_desc,
+                            "island_expanded_scale",
+                        ),
                     ),
             ) {
                 override fun isEnabled(viewModel: MainViewModel) = true
@@ -966,9 +1009,14 @@ object FeatureRegistry {
                 searchableSettings =
                     listOf(
                         SearchSetting(
-                            R.string.island_expanded_scale_title,
-                            R.string.island_expanded_scale_desc,
-                            "island_expanded_scale",
+                            R.string.island_balance_compact_title,
+                            R.string.island_section_visuals,
+                            "island_balance_compact",
+                        ),
+                        SearchSetting(
+                            R.string.island_persistent_order_title,
+                            R.string.island_section_visuals,
+                            "island_persistent_order",
                         ),
                     ),
             ) {
@@ -1024,15 +1072,46 @@ object FeatureRegistry {
                             R.string.island_section_behavior,
                             "island_secondary_bubble",
                         ),
+                    ),
+            ) {
+                override fun isEnabled(viewModel: MainViewModel) = true
+
+                override fun onToggle(
+                    viewModel: MainViewModel,
+                    context: Context,
+                    enabled: Boolean,
+                ) {}
+            },
+            object : Feature(
+                id = ISLAND_INTERACTIONS_FEATURE_ID,
+                title = R.string.island_section_interactions,
+                iconRes = R.drawable.rounded_touch_app_24,
+                category = R.string.cat_interface,
+                description = R.string.island_section_interactions,
+                showToggle = false,
+                parentFeatureId = "Island",
+                isVisibleInMain = false,
+                searchableSettings =
+                    listOf(
                         SearchSetting(
-                            R.string.island_secondary_style_title,
-                            R.string.island_notif_queue_style_search_desc,
-                            "island_secondary_style",
+                            R.string.island_dismiss_direction_title,
+                            R.string.island_section_interactions,
+                            "island_dismiss_direction",
                         ),
                         SearchSetting(
-                            R.string.island_balance_compact_title,
-                            R.string.island_section_behavior,
-                            "island_balance_compact",
+                            R.string.island_tap_to_open_expanded_title,
+                            R.string.island_section_interactions,
+                            "island_tap_to_open_expanded",
+                        ),
+                        SearchSetting(
+                            R.string.island_dismiss_on_outside_title,
+                            R.string.island_section_interactions,
+                            "island_dismiss_on_outside",
+                        ),
+                        SearchSetting(
+                            R.string.island_gesture_hints_title,
+                            R.string.island_section_interactions,
+                            "island_gesture_hints",
                         ),
                     ),
             ) {
@@ -1071,11 +1150,6 @@ object FeatureRegistry {
                             "island_notif_follow_dnd",
                         ),
                         SearchSetting(
-                            R.string.island_notif_keep_progress_title,
-                            R.string.island_notif_keep_progress_desc,
-                            "island_notif_keep_progress",
-                        ),
-                        SearchSetting(
                             R.string.island_notif_condensed_info_title,
                             R.string.island_notif_peek_style_search_desc,
                             "island_notif_peek_style",
@@ -1084,16 +1158,6 @@ object FeatureRegistry {
                             R.string.island_notif_queue_title,
                             R.string.island_notif_queue_desc,
                             "island_notif_queue",
-                        ),
-                        SearchSetting(
-                            R.string.island_notif_queue_inline_title,
-                            R.string.island_notif_queue_inline_desc,
-                            "island_notif_queue_inline",
-                        ),
-                        SearchSetting(
-                            R.string.island_notif_tap_to_open_title,
-                            R.string.island_notif_tap_to_open_desc,
-                            "island_notif_tap_to_open",
                         ),
                         SearchSetting(
                             R.string.island_catch_up_title,
@@ -1807,6 +1871,18 @@ object FeatureRegistry {
                             R.array.keywords_flashlight,
                         ),
                         SearchSetting(
+                            R.string.search_remap_power_camera_flip_title,
+                            R.string.search_remap_power_camera_flip_desc,
+                            "power_camera_flip",
+                            R.array.keywords_power_camera_flip,
+                        ),
+                        SearchSetting(
+                            R.string.search_remap_power_hold_title,
+                            R.string.search_remap_power_hold_desc,
+                            "power_hold",
+                            R.array.keywords_power_hold,
+                        ),
+                        SearchSetting(
                             R.string.search_flashlight_pocket_title,
                             R.string.search_flashlight_pocket_desc,
                             "flashlight_options",
@@ -2246,6 +2322,7 @@ object FeatureRegistry {
                 category = R.string.cat_system,
                 description = R.string.feat_shut_up_desc,
                 aboutDescription = R.string.shut_up_description,
+                howToUse = R.string.shut_up_how_to_use,
                 permissionKeys = listOf("WRITE_SECURE_SETTINGS", "USAGE_STATS"),
                 showToggle = false,
                 hasMoreSettings = true,
@@ -2401,6 +2478,29 @@ object FeatureRegistry {
                 ) {}
             },
             object : Feature(
+                id = "Text Snippets",
+                title = R.string.feat_text_snippets_title,
+                iconRes = R.drawable.rounded_edit_note_24,
+                category = R.string.cat_interaction,
+                description = R.string.feat_text_snippets_desc,
+                aboutDescription = R.string.about_desc_text_snippets,
+                howToUse = R.string.text_snippets_how_to_use,
+                contributors = listOf("Balajitechlabs"),
+                permissionKeys = listOf("ACCESSIBILITY"),
+                hasMoreSettings = true,
+                parentFeatureId = "Input",
+            ) {
+                override fun isEnabled(viewModel: MainViewModel) = viewModel.isTextSnippetsEnabled.value && viewModel.isAccessibilityEnabled.value
+
+                override fun onToggle(
+                    viewModel: MainViewModel,
+                    context: Context,
+                    enabled: Boolean,
+                ) {
+                    viewModel.setTextSnippetsEnabled(enabled)
+                }
+            },
+            object : Feature(
                 id = "Batteries",
                 title = R.string.feat_batteries_title,
                 iconRes = R.drawable.rounded_battery_charging_60_24,
@@ -2431,7 +2531,6 @@ object FeatureRegistry {
                 permissionKeys = listOf("DRAW_OVERLAYS"),
                 showToggle = false,
                 hasMoreSettings = true,
-                isBeta = true,
                 parentFeatureId = "Widgets",
             ) {
                 override fun isEnabled(viewModel: MainViewModel) = true

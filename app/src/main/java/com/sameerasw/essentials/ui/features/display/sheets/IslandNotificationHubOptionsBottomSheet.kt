@@ -6,14 +6,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.sameerasw.essentials.R
 import com.sameerasw.essentials.data.repository.SettingsRepository
+import com.sameerasw.essentials.translation.TranslatableText
 import com.sameerasw.essentials.ui.core.cards.IconToggleItem
 import com.sameerasw.essentials.ui.core.pickers.SegmentedPicker
 import com.sameerasw.essentials.ui.components.sliders.ConfigSliderItem
@@ -29,6 +31,8 @@ fun IslandNotificationHubOptionsBottomSheet(
     onDismissRequest: () -> Unit,
 ) {
     val view = LocalView.current
+    val context = LocalContext.current
+    val themedAppIcons = remember { SettingsRepository(context).getBoolean(SettingsRepository.KEY_ISLAND_THEMED_APP_ICONS, false) }
 
     EssentialsBottomSheet(onDismissRequest = onDismissRequest) {
         Column(
@@ -38,15 +42,14 @@ fun IslandNotificationHubOptionsBottomSheet(
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(
-                text = stringResource(R.string.island_notif_hub_title),
+            TranslatableText(
+                stringResId = R.string.island_notif_hub_title,
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(start = 8.dp, bottom = 4.dp),
             )
 
             RoundedCardContainer(spacing = 2.dp, cornerRadius = 24.dp) {
-                val autoLabel = stringResource(R.string.island_notif_hub_icons_auto)
                 val dynamicLabel = stringResource(R.string.island_notif_hub_order_dynamic)
                 val priorityLabel = stringResource(R.string.island_notif_hub_order_priority)
                 val recentLabel = stringResource(R.string.island_notif_hub_order_recent)
@@ -90,27 +93,27 @@ fun IslandNotificationHubOptionsBottomSheet(
                     iconRes = R.drawable.rounded_person_24,
                     title = stringResource(R.string.island_notif_hub_chat_pictures),
                     isChecked = viewModel.isIslandNotifHubPreferChatPictures.value,
+                    enabled = !(viewModel.isIslandNotifThemedBubble.value && themedAppIcons),
                     onCheckedChange = {
                         HapticUtil.performVirtualKeyHaptic(view)
                         viewModel.setIslandNotifHubPreferChatPictures(it)
                     },
                 )
-                ConfigSliderItem(
-                    title = stringResource(R.string.island_hide_icon_notifications),
-                    value = viewModel.islandNotifHubIcons.intValue.toFloat(),
-                    onValueChange = {
-                        HapticUtil.performUIHaptic(view)
-                        viewModel.setIslandNotifHubIcons(it.toInt())
+                IconToggleItem(
+                    iconRes = R.drawable.rounded_invert_colors_24,
+                    title = stringResource(R.string.island_notif_themed_bubble_title),
+                    description = if (themedAppIcons) null else stringResource(R.string.island_notif_themed_bubble_needs_themed_icons),
+                    isChecked = viewModel.isIslandNotifThemedBubble.value && themedAppIcons,
+                    enabled = themedAppIcons,
+                    onCheckedChange = {
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        viewModel.setIslandNotifThemedBubble(it)
                     },
-                    valueRange = 0f..8f,
-                    increment = 1f,
-                    iconRes = R.drawable.rounded_notifications_unread_24,
-                    valueFormatter = { if (it.toInt() == 0) autoLabel else it.toInt().toString() },
                 )
             }
 
-            Text(
-                text = stringResource(R.string.island_notif_hub_overflow_title),
+            TranslatableText(
+                stringResId = R.string.island_notif_hub_overflow_title,
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(start = 8.dp),

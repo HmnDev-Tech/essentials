@@ -18,12 +18,37 @@ data class WidgetStackConfig(
     val intervalSeconds: Int = DEFAULT_INTERVAL_SECONDS,
     // Stored by name; Gson leaves it null for stacks saved before it existed.
     private val controlsMode: String? = ControlsMode.ALWAYS.name,
+    // Null for stacks saved before it existed, which means off.
+    private val smartMode: Boolean? = null,
+    // Null for stacks saved before it existed, which means all Fill.
+    private val naturalSizeIds: List<Int>? = null,
 ) {
     /** How the arrows and dots below the stack are shown. */
     val controls: ControlsMode
         get() = ControlsMode.entries.firstOrNull { it.name == controlsMode } ?: ControlsMode.ALWAYS
 
     fun withControls(mode: ControlsMode) = copy(controlsMode = mode.name)
+
+    val smart: Boolean
+        get() = smartMode == true
+
+    fun withSmart(on: Boolean) = copy(smartMode = on)
+
+    fun isNaturalSize(hostedId: Int): Boolean = naturalSizeIds?.contains(hostedId) == true
+
+    fun withNaturalSize(
+        hostedId: Int,
+        on: Boolean,
+    ): WidgetStackConfig {
+        val current = naturalSizeIds ?: if (on) emptyList() else return this
+        val updated =
+            if (on) {
+                if (hostedId in current) current else current + hostedId
+            } else {
+                current.filter { it != hostedId }
+            }
+        return copy(naturalSizeIds = updated)
+    }
 
     enum class ControlsMode {
         ALWAYS,
