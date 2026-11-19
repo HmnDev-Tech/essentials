@@ -11,6 +11,9 @@ import android.app.KeyguardManager
 import android.content.Context
 import android.os.PowerManager
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
+import androidx.compose.runtime.Composable
+import android.graphics.Bitmap
 import androidx.compose.ui.unit.dp
 import com.sameerasw.essentials.R
 import com.sameerasw.essentials.data.repository.SettingsRepository
@@ -25,15 +28,16 @@ import com.sameerasw.essentials.island.model.InteractionOverrides
 import com.sameerasw.essentials.island.model.IslandItem
 import com.sameerasw.essentials.island.model.IslandPriority
 import com.sameerasw.essentials.island.model.IslandStage
+import com.sameerasw.essentials.island.state.MarqueeProgress
 import com.sameerasw.essentials.island.model.LineContent
 import com.sameerasw.essentials.island.model.PluginRequest
 import com.sameerasw.essentials.island.plugins.BaseIslandPlugin
 import com.sameerasw.essentials.island.plugins.launchPackage
 import com.sameerasw.essentials.island.plugins.sendPendingIntent
 import com.sameerasw.essentials.island.plugins.soften
-import com.sameerasw.essentials.island.ui.IslandStackBubble
 import com.sameerasw.essentials.island.ui.IslandStackOverlap
 import com.sameerasw.essentials.island.ui.components.IslandBitmap
+import com.sameerasw.essentials.island.ui.components.NotificationGlyph
 import com.sameerasw.essentials.island.ui.components.IslandIcon
 import com.sameerasw.essentials.services.NotificationListener
 import com.sameerasw.essentials.utils.HapticUtil
@@ -44,16 +48,16 @@ class NotificationsPlugin : BaseIslandPlugin() {
     override val settingKeys = setOf(
         SettingsRepository.KEY_ISLAND_CATCH_UP_ENABLED,
         SettingsRepository.KEY_ISLAND_NOTIF_PEEK_STYLE,
-        SettingsRepository.KEY_ISLAND_NOTIF_QUEUE_STYLE,
-        SettingsRepository.KEY_ISLAND_NOTIF_QUEUE_INLINE,
+        SettingsRepository.KEY_ISLAND_SECONDARY_BUBBLE,
         SettingsRepository.KEY_ISLAND_LINE_STAGE_ENABLED,
         SettingsRepository.KEY_ISLAND_SHOW_GLOW,
+        SettingsRepository.KEY_ISLAND_NOTIF_THEMED_BUBBLE,
+        SettingsRepository.KEY_ISLAND_THEMED_APP_ICONS,
         SettingsRepository.KEY_ISLAND_NOTIF_QUEUE,
         SettingsRepository.KEY_ISLAND_NOTIF_SKIP_SILENT,
         SettingsRepository.KEY_ISLAND_NOTIF_FOLLOW_DND,
         SettingsRepository.KEY_ISLAND_NOTIF_FILTER_APPS,
         SettingsRepository.KEY_ISLAND_NOTIF_FILTER_APPS_LIST,
-        SettingsRepository.KEY_ISLAND_NOTIF_TAP_TO_OPEN,
         SettingsRepository.KEY_ISLAND_SHOW_NOTIFICATIONS,
         SettingsRepository.KEY_ISLAND_NOTIF_HUB,
         SettingsRepository.KEY_ISLAND_NOTIF_HUB_ICONS,
@@ -249,7 +253,7 @@ class NotificationsPlugin : BaseIslandPlugin() {
     }
 
     private fun applyHub(allLive: List<ActiveNotificationAlert>) {
-        val live = allLive.filter { passesFilters(it) }
+        val live = allLive.filter { passesFilters(it, forHub = true) }
         val liveKeys = live.mapTo(HashSet()) { it.key }
         val stale = alerts.filter { it.key !in liveKeys && !it.key.startsWith("simulated_") }
         stale.forEach { removeQuietly(it.key) }
@@ -282,7 +286,7 @@ class NotificationsPlugin : BaseIslandPlugin() {
     }
 
     private fun addSilently(alert: ActiveNotificationAlert) {
-        if (!passesFilters(alert)) {
+        if (!passesFilters(alert, forHub = true)) {
             removeQuietly(alert.key)
             render()
             return
@@ -322,8 +326,8 @@ class NotificationsPlugin : BaseIslandPlugin() {
         if (ctx?.isContentSuppressed?.invoke() == true) clearAll() else render()
     }
 
-    private fun passesFilters(alert: ActiveNotificationAlert): Boolean {
-        if (alert.isSilent && settings.isIslandNotifSkipSilentEnabled()) return false
+    private fun passesFilters(alert: ActiveNotificationAlert, forHub: Boolean = false): Boolean {
+        if (alert.isSilent && settings.isIslandNotifSkipSilentEnabled() && (!forHub || (!alert.ongoing && !settings.isIslandNotifHubIncludeSilent()))) return false
         if (alert.blockedByDnd && settings.isIslandNotifFollowDndEnabled()) return false
         if (isOtp(alert) && settings.isIslandOtpBypassFilterEnabled()) return true
         if (!settings.isIslandNotifFilterAppsEnabled()) return true
@@ -449,6 +453,14 @@ class NotificationsPlugin : BaseIslandPlugin() {
     private fun onTimeout() {
         val c = ctx ?: return
         if (pendingPopUp) return
+        if (settings.isIslandTimeoutAfterMarqueeEnabled() && c.currentStage() == IslandStage.Line) {
+            val remaining = MarqueeProgress.remainingMs()
+            if (remaining > 0L) {
+                c.mainHandler.removeCallbacks(timeoutRunnable)
+                c.mainHandler.postDelayed(timeoutRunnable, remaining + MARQUEE_SETTLE_MS)
+                return
+            }
+        }
         if (showingHere() && alerts.size > 1 && !manualPick && advanceToUnseen()) {
             scheduleTimeout()
             render()
@@ -509,7 +521,7 @@ class NotificationsPlugin : BaseIslandPlugin() {
     }
 
     private fun bubbleCells(): Int {
-        if (!hub() || settings.getIslandNotifQueueStyle() != SettingsRepository.ISLAND_NOTIF_QUEUE_STYLE_OVERLAP) return 1
+        if (!hub()) return 1
         val cap = settings.getIslandNotifHubIcons().let { if (it == 0) AUTO_CELL_ICONS else it }
         val count = hubEntries().size
         val shown = count.coerceIn(1, cap)
@@ -560,12 +572,18 @@ class NotificationsPlugin : BaseIslandPlugin() {
         return if (pinned != null) listOf(pinned) + byPriority.filter { it !== pinned } else byPriority
     }
 
+    private fun carouselOrder(): List<ActiveNotificationAlert> {
+        if (!hub()) return alerts
+        val ordered = hubEntries().asReversed().flatMap { it.alerts.asReversed() }
+        return alerts.filter { a -> ordered.none { it === a } } + ordered
+    }
+
     private fun hubIconFor(entry: HubEntry): StackIcon {
         val highlight = pinnedKey?.let { key -> entry.alerts.any { it.key == key } } == true
         if (!entry.grouped) return stackIconFor(entry.lead, current = false, highlight = highlight)
         val icon = entry.lead.appIcon ?: entry.lead.icon
         return StackIcon(entry.key, onSelect = { select(entry.lead.key) }, highlight = highlight) { size ->
-            IslandBitmap(icon, size, circle = true, fallbackRes = R.drawable.rounded_notifications_unread_24)
+            AlertIcon(entry.lead, icon, size, circle = true)
         }
     }
 
@@ -648,7 +666,8 @@ class NotificationsPlugin : BaseIslandPlugin() {
         } else {
             null
         }
-        val stack = alerts.map { stackIconFor(it, current = it === alert) }
+        val row = carouselOrder()
+        val stack = row.map { stackIconFor(it, current = it === alert) }
         val waitingAlerts = waitingInOrder(alert).filter { !it.hubOnly && it.key !in seen }
         val queued = if (hub()) {
             hubEntries().filter { entry -> entry.alerts.none { it === alert } }.map { hubIconFor(it) }
@@ -656,13 +675,14 @@ class NotificationsPlugin : BaseIslandPlugin() {
             waitingAlerts.map { stackIconFor(it, current = false) }
         }
         val minimal = minimal()
-        val waiting = if (minimal) waitingAlerts.map { stackIconFor(it, current = false) } else emptyList()
-        val inlineQueue = minimal && waiting.isNotEmpty() && settings.isIslandNotifQueueInlineEnabled()
+        val waitingRow = alerts.filter { a -> waitingAlerts.any { it === a } }.asReversed()
+        val waiting = if (minimal) waitingRow.map { stackIconFor(it, current = false) } else emptyList()
+        val inlineQueue = minimal && waiting.isNotEmpty() && !settings.isIslandSecondaryBubbleEnabled()
         val bubble = when {
             minimal && waiting.isNotEmpty() && !inlineQueue -> SideBubble(
                 priority = SideBubblePriority.NOTIFICATION,
                 icons = waiting,
-                onOpen = { select(waiting.first().key) },
+                onOpen = { select(waitingAlerts.first().key) },
                 onDismiss = { clearWaiting() },
             )
             minimal -> null
@@ -672,7 +692,7 @@ class NotificationsPlugin : BaseIslandPlugin() {
                 icons = if (hub()) {
                     hubEntries().map { hubIconFor(it) }
                 } else {
-                    alerts.map { stackIconFor(it, current = false) }
+                    alerts.asReversed().map { stackIconFor(it, current = false) }
                 },
                 onOpen = { select(alert.key) },
                 onDismiss = if (hub()) null else ({ clearAll() }),
@@ -685,12 +705,14 @@ class NotificationsPlugin : BaseIslandPlugin() {
         publish(
             itemFor(alert).let { current ->
                 current.withStack(
+                    onClearAll = { dismissEverything() },
+                    onSnoozeAll = if (snoozeAvailable()) ({ minutes: Int -> snoozeCurrent(minutes) }) else null,
                     sideBubble = bubble,
                     compactVisible = minimal || bubble == null,
                     leadingCell = if (inlineQueue) queueCell(waiting) else null,
                     queue = next?.let {
                         QueueInfo(
-                            next = itemFor(it).withStack(null, alerts.map { a -> stackIconFor(a, current = a === it) }),
+                            next = itemFor(it).withStack(null, row.map { a -> stackIconFor(a, current = a === it) }),
                             onAdvance = { advanceQueue() },
                         )
                     },
@@ -704,10 +726,27 @@ class NotificationsPlugin : BaseIslandPlugin() {
     private fun queueEnabled() = settings.isIslandNotifQueueEnabled()
 
     private fun queueCell(icons: List<StackIcon>): CompactCell = CompactCell("notif.queue") {
-        when (settings.getIslandNotifQueueStyle()) {
-            SettingsRepository.ISLAND_NOTIF_QUEUE_STYLE_OVERLAP -> IslandStackOverlap(icons, 22.dp)
-            else -> IslandStackBubble(icons, 26.dp)
-        }
+        IslandStackOverlap(icons, 22.dp)
+    }
+
+    private fun dismissEverything() {
+        val keys = alerts.map { it.key }
+        clearAll()
+        keys.forEach { NotificationListener.dismissNotification(it) }
+        NotificationListener.dismissSilentNotifications()
+        ctx?.request?.invoke(PluginRequest.Collapse(ITEM_KEY))
+    }
+
+    private fun snoozeAvailable(): Boolean =
+        NotificationListener.instance != null &&
+            runCatching { android.provider.Settings.Secure.getInt(context.contentResolver, "show_notification_snooze", 0) == 1 }.getOrDefault(false)
+
+    private fun snoozeCurrent(minutes: Int) {
+        val key = currentAlert()?.key ?: return
+        runCatching { NotificationListener.instance?.snoozeNotification(key, minutes * 60_000L) }
+        val remaining = alerts.any { it.key != key }
+        onRemoved(key)
+        if (!remaining) ctx?.request?.invoke(PluginRequest.Collapse(ITEM_KEY))
     }
 
     private fun clearWaiting() {
@@ -735,7 +774,6 @@ class NotificationsPlugin : BaseIslandPlugin() {
         if (code != null) return otpItemFor(alert, code)
         val (sender, message) = senderAndMessage(context, alert)
         val showGlow = settings.isIslandShowGlowEnabled()
-        val tapToOpen = settings.isIslandNotifTapToOpenEnabled()
         val icon = alert.chatIcon ?: alert.appIcon ?: alert.icon
         val accent = alert.appColor?.let { Color(soften(it)) }
         return IslandItem(
@@ -745,16 +783,16 @@ class NotificationsPlugin : BaseIslandPlugin() {
             compact = buildList {
                 add(
                     CompactCell("notif.icon") {
-                        IslandBitmap(icon, 22.dp, fallbackRes = R.drawable.rounded_notifications_unread_24)
+                        AlertIcon(alert, icon, 22.dp)
                     },
                 )
                 val appIcon = alert.appIcon
-                if (!minimal() && alert.chatIcon != null && appIcon != null) {
+                if (!minimal() && !themedBubble() && alert.chatIcon != null && appIcon != null) {
                     add(CompactCell("notif.app", soloOnly = true) { IslandBitmap(appIcon, 22.dp, circle = true) })
                 }
             },
             line = LineContent(
-                icon = { IslandBitmap(icon, 24.dp, fallbackRes = R.drawable.rounded_notifications_unread_24) },
+                icon = { AlertIcon(alert, icon, 24.dp) },
                 start = sender,
                 end = message,
                 condensed = condensedLine(),
@@ -763,12 +801,11 @@ class NotificationsPlugin : BaseIslandPlugin() {
                 NotificationExpanded(
                     alert = alert,
                     sender = sender,
-                    message = message,
+                    message = alert.expandedText ?: message,
                     showGlow = showGlow,
                     onAction = { runAction(alert, it) },
                     onReply = { action, text -> sendReply(alert, action, text) },
                     scope = scope,
-                    tapToOpen = tapToOpen,
                 )
             },
             accent = accent,
@@ -802,24 +839,24 @@ class NotificationsPlugin : BaseIslandPlugin() {
             compact = buildList {
                 add(
                     CompactCell("notif.icon") {
-                        IslandBitmap(icon, 22.dp, fallbackRes = R.drawable.rounded_notifications_unread_24)
+                        AlertIcon(alert, icon, 22.dp)
                     },
                 )
                 val appIcon = alert.appIcon
-                if (!minimal() && !hideChat && alert.chatIcon != null && appIcon != null) {
+                if (!minimal() && !themedBubble() && !hideChat && alert.chatIcon != null && appIcon != null) {
                     add(CompactCell("notif.app", soloOnly = true) { IslandBitmap(appIcon, 22.dp, circle = true) })
                 }
             },
             line = if (isOtp(alert)) {
                 LineContent(
-                    icon = { IslandBitmap(alert.appIcon ?: alert.icon, 24.dp, fallbackRes = R.drawable.rounded_lock_24) },
+                    icon = { AlertIcon(alert, alert.appIcon ?: alert.icon, 24.dp, fallbackRes = R.drawable.rounded_lock_24) },
                     start = "${appNameFor(context, alert)} · ${context.getString(R.string.island_otp_label)}",
                     end = alert.otpCode?.let(::maskOtp).orEmpty(),
                     endSlot = { IslandIcon(R.drawable.rounded_lock_24, size = 18.dp) },
                 )
             } else {
                 LineContent(
-                    icon = { IslandBitmap(icon, 24.dp, fallbackRes = R.drawable.rounded_notifications_unread_24) },
+                    icon = { AlertIcon(alert, icon, 24.dp) },
                     start = appNameFor(context, alert),
                     end = "",
                     condensed = condensedLine(),
@@ -853,11 +890,11 @@ class NotificationsPlugin : BaseIslandPlugin() {
             placement = CompactPlacement.Dynamic,
             compact = listOf(
                 CompactCell("notif.icon") {
-                    IslandBitmap(icon, 22.dp, fallbackRes = R.drawable.rounded_notifications_unread_24)
+                    AlertIcon(alert, icon, 22.dp)
                 },
             ),
             line = LineContent(
-                icon = { IslandBitmap(icon, 24.dp, fallbackRes = R.drawable.rounded_notifications_unread_24) },
+                icon = { AlertIcon(alert, icon, 24.dp) },
                 start = sender,
                 end = formatOtp(code),
                 endSlot = { IslandIcon(R.drawable.rounded_content_copy_24, size = 18.dp) },
@@ -943,13 +980,32 @@ class NotificationsPlugin : BaseIslandPlugin() {
     private fun stackIconFor(alert: ActiveNotificationAlert, current: Boolean, highlight: Boolean = false): StackIcon {
         val icon = if ((concealed() && hidesChatPictures()) || (hub() && !settings.isIslandNotifHubPreferChatPictures())) alert.appIcon ?: alert.icon else alert.chatIcon ?: alert.appIcon ?: alert.icon
         return StackIcon(alert.key, current = current, onSelect = { select(alert.key) }, highlight = highlight) { size ->
-            IslandBitmap(icon, size, circle = true, fallbackRes = R.drawable.rounded_notifications_unread_24)
+            AlertIcon(alert, icon, size, circle = true)
+        }
+    }
+
+    private fun themedBubble() = settings.isIslandNotifThemedBubbleActive()
+
+    @Composable
+    private fun AlertIcon(
+        alert: ActiveNotificationAlert,
+        bitmap: Bitmap?,
+        size: Dp,
+        circle: Boolean = false,
+        fallbackRes: Int = R.drawable.rounded_notifications_unread_24,
+    ) {
+        if (themedBubble()) {
+            NotificationGlyph(alert.themedIcon, alert.smallIcon, alert.appColor?.let { Color(soften(it)) }, size, fallbackRes = fallbackRes)
+        } else {
+            IslandBitmap(bitmap, size, circle = circle, fallbackRes = fallbackRes)
         }
     }
 
     private fun IslandItem.withStack(
         queue: QueueInfo?,
         stack: List<StackIcon>,
+        onClearAll: (() -> Unit)? = this.onClearAll,
+        onSnoozeAll: ((Int) -> Unit)? = this.onSnoozeAll,
         sideBubble: SideBubble? = null,
         compactVisible: Boolean = sideBubble == null,
         leadingCell: CompactCell? = null,
@@ -964,6 +1020,8 @@ class NotificationsPlugin : BaseIslandPlugin() {
         accent = accent,
         dismissible = dismissible,
         onDismiss = onDismiss,
+        onClearAll = onClearAll,
+        onSnoozeAll = onSnoozeAll,
         onOpen = onOpen,
         interactions = interactions,
         queue = queue,
@@ -1007,6 +1065,8 @@ class NotificationsPlugin : BaseIslandPlugin() {
     }
 
     companion object {
+        private const val MARQUEE_SETTLE_MS = 400L
+
         const val ITEM_KEY = "notifications"
         private const val MAX_QUEUE = 20
         private const val HUB_MAX_QUEUE = 200

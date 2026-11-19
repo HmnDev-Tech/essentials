@@ -10,6 +10,7 @@
 package com.sameerasw.essentials
 
 import android.app.Application
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -17,8 +18,10 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import com.sameerasw.essentials.data.repository.SettingsRepository
 import com.sameerasw.essentials.services.receivers.SecurityReceiver
+import com.sameerasw.essentials.services.widgets.BatteriesWidgetReceiver
 import com.sameerasw.essentials.utils.SheveryUtils
 import com.sameerasw.essentials.utils.ShizukuUtils
 import eu.darken.porter.bridge.PorterShizukuBridge
@@ -36,6 +39,11 @@ class EssentialsApp : Application() {
     }
 
     private val securityReceiver = SecurityReceiver()
+    private val powerReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            context.sendBroadcast(Intent(context, BatteriesWidgetReceiver::class.java).setAction(BatteriesWidgetReceiver.ACTION_POWER_STATE_CHANGED))
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -87,16 +95,23 @@ class EssentialsApp : Application() {
                 addAction(Intent.ACTION_USER_PRESENT)
             }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(securityReceiver, intentFilter, RECEIVER_EXPORTED)
-        } else {
-            registerReceiver(securityReceiver, intentFilter)
-        }
+        ContextCompat.registerReceiver(this, securityReceiver, intentFilter, ContextCompat.RECEIVER_EXPORTED)
+
+        ContextCompat.registerReceiver(
+            this,
+            powerReceiver,
+            IntentFilter().apply {
+                addAction(Intent.ACTION_POWER_CONNECTED)
+                addAction(Intent.ACTION_POWER_DISCONNECTED)
+            },
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
     }
 
     override fun onTerminate() {
         super.onTerminate()
         unregisterReceiver(securityReceiver)
+        unregisterReceiver(powerReceiver)
     }
 
     private fun initSentry() {

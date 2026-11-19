@@ -11,12 +11,25 @@ package com.sameerasw.essentials.ui.core.sheets
 
 import android.content.Intent
 import android.widget.Toast
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.TextButton
 import com.sameerasw.essentials.data.repository.SettingsRepository
+import com.sameerasw.essentials.domain.configshare.ConfigShareRegistry
 import com.sameerasw.essentials.domain.registry.FeatureResetRegistry
 import com.sameerasw.essentials.ui.features.consciousgate.HoldToContinueButton
 import androidx.compose.foundation.background
@@ -72,6 +85,7 @@ import com.sameerasw.essentials.utils.ColorUtil
 import com.sameerasw.essentials.utils.HapticUtil
 import com.sameerasw.essentials.utils.PermissionUIHelper
 import com.sameerasw.essentials.viewmodels.MainViewModel
+import com.sameerasw.essentials.viewmodels.StatusBarIconViewModel
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class, ExperimentalLayoutApi::class)
 @Composable
@@ -81,19 +95,32 @@ fun FeatureHelpBottomSheet(
     viewModel: MainViewModel = viewModel(),
 ) {
     val context = LocalContext.current
+    val statusBarIconViewModel: StatusBarIconViewModel = viewModel()
     val scrollState = rememberScrollState()
     val view = LocalView.current
     val isUnsupported = !feature.isDeviceSupported(context)
     val customHelp = FeatureCustomHelp.forFeature(feature.id)
     var showCustomHelp by remember { mutableStateOf(false) }
     var showResetInfo by remember { mutableStateOf(false) }
+    var showBugReport by remember { mutableStateOf(false) }
+    var isDescriptionExpanded by remember { mutableStateOf(false) }
+    var isDescriptionOverflowing by remember { mutableStateOf(false) }
     HelpSheetTracker.TrackOpen()
+
+    if (showBugReport) {
+        BugReportBottomSheet(
+            viewModel = viewModel,
+            onDismissRequest = onDismissRequest,
+            sourceFeature = feature.id,
+        )
+        return
+    }
 
     if (showResetInfo) {
         AlertDialog(
             onDismissRequest = { showResetInfo = false },
-            title = { Text(stringResource(R.string.feature_reset_info_title)) },
-            text = { Text(stringResource(R.string.feature_reset_info_desc)) },
+            title = { TranslatableText(R.string.feature_reset_info_title) },
+            text = { TranslatableText(R.string.feature_reset_info_desc) },
             confirmButton = {
                 TextButton(onClick = { showResetInfo = false }) { Text(stringResource(android.R.string.ok)) }
             },
@@ -176,6 +203,20 @@ fun FeatureHelpBottomSheet(
                         label = stringResource(R.string.label_legacy),
                     )
                 }
+
+                FilledIconButton(
+                    onClick = {
+                        HapticUtil.performUIHaptic(view)
+                        showBugReport = true
+                    },
+                    modifier = Modifier.size(width = 52.dp, height = 40.dp),
+                    shape = CircleShape,
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.rounded_bug_report_24),
+                        contentDescription = stringResource(R.string.action_report_bug),
+                    )
+                }
             }
 
             // Online Help Media 
@@ -188,13 +229,85 @@ fun FeatureHelpBottomSheet(
             RoundedCardContainer(
                 containerColor = MaterialTheme.colorScheme.surfaceBright,
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                val chevronRotation by animateFloatAsState(
+                    targetValue = if (isDescriptionExpanded) 180f else 0f,
+                    label = "HelpDescriptionChevron",
+                )
+                val isCollapsed = isDescriptionOverflowing && !isDescriptionExpanded
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable(enabled = isDescriptionOverflowing) {
+                                HapticUtil.performUIHaptic(view)
+                                isDescriptionExpanded = !isDescriptionExpanded
+                            }.animateContentSize()
+                            .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
                     val descRes = feature.aboutDescription ?: feature.description
 
                     TranslatableText(
                         stringResId = descRes,
                         style = MaterialTheme.typography.bodyLarge,
+                        maxLines = if (isDescriptionExpanded) Int.MAX_VALUE else COLLAPSED_DESCRIPTION_LINES,
+                        overflow = TextOverflow.Ellipsis,
+                        onTextLayout = { result ->
+                            if (!isDescriptionExpanded) isDescriptionOverflowing = result.hasVisualOverflow
+                        },
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                                .drawWithContent {
+                                    drawContent()
+                                    if (isCollapsed) {
+                                        drawRect(
+                                            brush =
+                                                Brush.verticalGradient(
+                                                    0.6f to Color.Black,
+                                                    1f to Color.Transparent,
+                                                ),
+                                            blendMode = BlendMode.DstIn,
+                                        )
+                                    }
+                                },
                     )
+
+                    if (isDescriptionOverflowing) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.rounded_keyboard_arrow_down_24),
+                            contentDescription =
+                                stringResource(
+                                    if (isDescriptionExpanded) R.string.action_show_less else R.string.action_show_more,
+                                ),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier =
+                                Modifier
+                                    .padding(top = 4.dp)
+                                    .size(24.dp)
+                                    .rotate(chevronRotation),
+                        )
+                    }
+                }
+            }
+
+            feature.howToUse?.let { howRes ->
+                TranslatableText(
+                    stringResId = R.string.label_how_to_use,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                )
+                RoundedCardContainer(
+                    containerColor = MaterialTheme.colorScheme.surfaceBright,
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        TranslatableText(
+                            stringResId = howRes,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
                 }
             }
 
@@ -212,7 +325,7 @@ fun FeatureHelpBottomSheet(
                         modifier = Modifier.size(18.dp),
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = stringResource(customHelp.label))
+                    TranslatableText(stringResId = customHelp.label)
                 }
             }
 
@@ -222,7 +335,7 @@ fun FeatureHelpBottomSheet(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
-                        text = stringResource(R.string.label_feature_credits),
+                        text = stringResource(feature.creditsLabel ?: R.string.label_feature_credits),
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -265,6 +378,22 @@ fun FeatureHelpBottomSheet(
             }
 
             val resetPrefixes = FeatureResetRegistry.prefixesFor(feature.id)
+            ConfigShareRegistry.descriptorFor(feature.id)?.let { descriptor ->
+                ConfigShareRow(
+                    descriptor = descriptor,
+                    onApplied = {
+                        SettingsRepository(context).syncSystemSettingsWithSaved()
+                        viewModel.check(context)
+                        if (feature.id == "Statusbar icons") {
+                            statusBarIconViewModel.check(context)
+                            statusBarIconViewModel.setBatteryPercentageMode(
+                                statusBarIconViewModel.batteryPercentageMode.value,
+                                context,
+                            )
+                        }
+                    },
+                )
+            }
             if (feature.id == "Lock screen clock") {
                 HoldToContinueButton(
                     waitTimeProgress = 1f,
@@ -378,3 +507,5 @@ fun FeatureHelpBottomSheet(
         }
     }
 }
+
+private const val COLLAPSED_DESCRIPTION_LINES = 10

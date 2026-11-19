@@ -62,6 +62,7 @@ import com.sameerasw.essentials.utils.NetworkUtil
 import com.sameerasw.essentials.utils.AppUtil
 import com.sameerasw.essentials.utils.DuoOverlayView
 import com.sameerasw.essentials.utils.FlashlightUtil
+import com.sameerasw.essentials.island.service.SharedOverlayWindow
 import com.sameerasw.essentials.utils.OverlayHelper
 import java.io.File
 import java.text.SimpleDateFormat
@@ -353,8 +354,18 @@ class DuoOverlayHandler(
 
     fun setIslandVisible(visible: Boolean) {
         isIslandVisible = visible
-        mainHandler.post { overlayView?.isYieldingToIsland = shouldYieldToIsland() }
+        mainHandler.post {
+            overlayView?.isYieldingToIsland = shouldYieldToIsland()
+            overlayView?.islandColor = matchedIslandColor()
+        }
     }
+
+    private fun matchedIslandColor(): Int? =
+        if (isIslandVisible && settingsRepository.isDuoMatchIslandColorsEnabled()) {
+            com.sameerasw.essentials.island.ui.IslandColorBridge.color
+        } else {
+            null
+        }
 
     private fun shouldYieldToIsland(): Boolean = isIslandVisible && settingsRepository.isDuoIslandCombined()
 
@@ -883,6 +894,9 @@ class DuoOverlayHandler(
 
             if (overlayView == null) {
                 overlayView = DuoOverlayView(service)
+                com.sameerasw.essentials.island.ui.IslandColorBridge.listener = { color ->
+                    mainHandler.post { overlayView?.islandColor = matchedIslandColor() }
+                }
             }
 
             overlayView?.apply {
@@ -903,6 +917,10 @@ class DuoOverlayHandler(
                 this.hideWhenScreenOff = if (areUnsupportedFeaturesEnabled) settingsRepository.isDuoHideWhenScreenOffEnabled() else true
                 this.hideWhenScreenOffOnlyIdle = if (areUnsupportedFeaturesEnabled) settingsRepository.isDuoHideWhenScreenOffOnlyIdleEnabled() else false
                 this.useMaterialYouColors = settingsRepository.isDuoUseMaterialYouEnabled()
+                val matchIsland = settingsRepository.isDuoMatchIslandColorsEnabled()
+                com.sameerasw.essentials.island.ui.IslandColorBridge.enabled = matchIsland
+                this.matchIslandColors = matchIsland
+                this.islandColor = matchedIslandColor()
                 try {
                     this.customColor = Color.parseColor(settingsRepository.getDuoCustomColor())
                 } catch (_: Exception) {}
@@ -945,20 +963,14 @@ class DuoOverlayHandler(
             }
 
             if (!isOverlayAdded) {
-                val params = OverlayHelper.createOverlayLayoutParams(
-                    WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                        WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-                    isTouchable = false
-                )
                 try {
-                    overlayView?.let { runCatching { wm.removeViewImmediate(it) } }
+                    SharedOverlayWindow.detach(SharedOverlayWindow.Layer.Duo)
                     overlayView?.playEnter()
-                    wm.addView(overlayView, params)
-                    isOverlayAdded = true
-                    registerRotationListener()
+                    val added = overlayView?.let {
+                        SharedOverlayWindow.attach(service, wm, SharedOverlayWindow.Layer.Duo, it)
+                    } == true
+                    isOverlayAdded = added
+                    if (added) registerRotationListener()
                 } catch (e: Exception) {
                     Log.e("DuoOverlayHandler", "Failed to add Duo overlay", e)
                 }
@@ -1373,9 +1385,7 @@ class DuoOverlayHandler(
                 isOverlayAdded = false
                 val remove = {
                     if (!isOverlayAdded) {
-                        try {
-                            windowManager?.removeView(fading)
-                        } catch (_: Exception) {}
+                        SharedOverlayWindow.detach(SharedOverlayWindow.Layer.Duo, fading)
                     }
                 }
                 if (animate) fading.playExit(remove) else remove()
@@ -1402,6 +1412,8 @@ class DuoOverlayHandler(
     }
 
     fun destroy() {
+        com.sameerasw.essentials.island.ui.IslandColorBridge.listener = null
+        com.sameerasw.essentials.island.ui.IslandColorBridge.enabled = false
         removeOverlay(animate = false)
         overlayView = null
         touchAnchorView = null

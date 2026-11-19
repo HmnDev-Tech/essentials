@@ -115,7 +115,6 @@ object ShizukuUtils {
     fun isShizukuAvailable(): Boolean =
         try {
             Shizuku.pingBinder()
-            true
         } catch (
             @Suppress("UNUSED_PARAMETER") e: Exception,
         ) {
@@ -123,6 +122,10 @@ object ShizukuUtils {
         }
 
     fun requestPermission() {
+        if (ShellUtils.isSheveryEnabled(EssentialsApp.context)) {
+            SheveryUtils.requestPermission()
+            return
+        }
         try {
             Shizuku.requestPermission(1003)
         } catch (

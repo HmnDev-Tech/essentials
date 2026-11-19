@@ -62,7 +62,9 @@ import com.sameerasw.essentials.R
 import com.sameerasw.essentials.domain.diy.Action
 import com.sameerasw.essentials.domain.diy.Automation
 import com.sameerasw.essentials.domain.diy.Trigger
+import com.sameerasw.essentials.domain.diy.systemMetricText
 import com.sameerasw.essentials.domain.diy.State as DIYState
+import com.sameerasw.essentials.translation.TranslatableText
 import com.sameerasw.essentials.ui.components.menus.SegmentedDropdownMenu
 import com.sameerasw.essentials.ui.components.menus.SegmentedDropdownMenuItem
 import com.sameerasw.essentials.ui.core.containers.RoundedCardContainer
@@ -80,6 +82,7 @@ fun AutomationItem(
     onDelete: () -> Unit = {},
     onToggle: () -> Unit = {},
     onTest: () -> Unit = {},
+    onShare: () -> Unit = {},
     selectionMode: Boolean = false,
     selected: Boolean = false,
     onSelectedChange: (Boolean) -> Unit = {},
@@ -142,7 +145,7 @@ fun AutomationItem(
                     },
                 )
                 SegmentedDropdownMenuItem(
-                    text = { Text(stringResource(R.string.action_test)) },
+                    text = { TranslatableText(R.string.action_test) },
                     onClick = {
                         showMenu = false
                         onTest()
@@ -155,7 +158,7 @@ fun AutomationItem(
                     },
                 )
                 SegmentedDropdownMenuItem(
-                    text = { Text(stringResource(R.string.action_edit)) },
+                    text = { TranslatableText(R.string.action_edit) },
                     onClick = {
                         showMenu = false
                         onClick()
@@ -168,7 +171,20 @@ fun AutomationItem(
                     },
                 )
                 SegmentedDropdownMenuItem(
-                    text = { Text(stringResource(R.string.action_select)) },
+                    text = { TranslatableText(R.string.diy_action_share) },
+                    onClick = {
+                        showMenu = false
+                        onShare()
+                    },
+                    leadingIcon = {
+                        Icon(
+                            painter = painterResource(R.drawable.rounded_share_24),
+                            contentDescription = null,
+                        )
+                    },
+                )
+                SegmentedDropdownMenuItem(
+                    text = { TranslatableText(R.string.action_select) },
                     onClick = {
                         showMenu = false
                         onSelectedChange(true)
@@ -181,7 +197,7 @@ fun AutomationItem(
                     },
                 )
                 SegmentedDropdownMenuItem(
-                    text = { Text(stringResource(R.string.action_delete)) },
+                    text = { TranslatableText(R.string.action_delete) },
                     onClick = {
                         showMenu = false
                         onDelete()
@@ -301,9 +317,10 @@ fun AutomationItem(
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                     )
-                                    automationSummary(automation)?.let { summary ->
+                                    val summary = automationSummary(automation)
+                                    summary?.let {
                                         Text(
-                                            text = summary,
+                                            text = it,
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f),
                                             maxLines = 2,
@@ -455,6 +472,7 @@ private fun automationSummary(automation: Automation): String? {
                         trigger.appName.ifBlank { null },
                         trigger.textContains.ifBlank { null }?.let { "\"$it\"" },
                     ).joinToString(" · ").ifBlank { null }
+                is Trigger.SystemMetric -> systemMetricText(context, trigger.metric, trigger.comparison)
                 else -> null
             }
 
@@ -463,6 +481,7 @@ private fun automationSummary(automation: Automation): String? {
                 is DIYState.TimePeriod ->
                     "${time(state.startHour, state.startMinute)} – ${time(state.endHour, state.endMinute)} · ${days(state.days)}"
                 is DIYState.BatteryLevel -> "${state.minLevel}% – ${state.maxLevel}%"
+                is DIYState.SystemMetric -> systemMetricText(context, state.metric, state.comparison)
                 is DIYState.CalendarEvent ->
                     if (state.calendarIds.isEmpty()) {
                         allCalendars
@@ -556,8 +575,9 @@ fun ActionItem(
             }
             if (moreCount > 0) {
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = stringResource(R.string.diy_more_actions, moreCount),
+                TranslatableText(
+                    stringResId = R.string.diy_more_actions,
+                    formatArgs = listOf(moreCount),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

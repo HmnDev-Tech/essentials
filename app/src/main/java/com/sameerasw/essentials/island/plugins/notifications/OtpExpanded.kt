@@ -1,5 +1,6 @@
 package com.sameerasw.essentials.island.plugins.notifications
 
+import com.sameerasw.essentials.island.ui.IslandSurfaceAccent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -34,8 +35,8 @@ import com.sameerasw.essentials.island.ui.components.ConnectedItem
 import com.sameerasw.essentials.island.ui.components.ConnectedTextLabel
 import com.sameerasw.essentials.island.ui.components.IslandBitmap
 import com.sameerasw.essentials.island.ui.components.MarqueeText
-import com.sameerasw.essentials.island.ui.components.accentGlow
 import com.sameerasw.essentials.island.ui.components.cameraClearance
+import com.sameerasw.essentials.translation.TranslatableText
 
 fun formatOtp(code: String): String = when {
     code.length <= 5 -> code
@@ -58,9 +59,9 @@ fun OtpExpanded(
     val spec = scope.spec
     val sidePadding = spec.expandedPadding + spec.expandedCorner * 0.35f
     val accent = alert.appColor?.let { Color(it) } ?: Color.White
+    IslandSurfaceAccent(accent)
     var showMessage by remember(alert.key) { mutableStateOf(false) }
     Box(propagateMinConstraints = true) {
-        Box(Modifier.matchParentSize().accentGlow(accent, showGlow, scope.cameraClearance))
         Column(
             modifier = Modifier.fillMaxWidth().padding(spec.expandedOutset),
             verticalArrangement = Arrangement.SpaceBetween,
@@ -68,13 +69,12 @@ fun OtpExpanded(
             Column {
                 Spacer(Modifier.height(spec.expandedTopPadding))
                 scope.CameraRow(
-                    horizontalPadding = spec.cameraGap + spec.expandedCorner * 0.35f,
+                    title = sender,
                     start = {
                         IslandBitmap(alert.appIcon ?: alert.icon, spec.cellSize, fallbackRes = R.drawable.rounded_notifications_unread_24)
-                        MarqueeText(text = sender, style = IslandTextStyles.title, modifier = Modifier.weight(1f))
                     },
                     end = {
-                        Text(stringResource(R.string.island_otp_label), style = IslandTextStyles.body, maxLines = 1)
+                        TranslatableText(R.string.island_otp_label, style = IslandTextStyles.body, maxLines = 1)
                     },
                 )
                 Spacer(Modifier.height(10.dp))
@@ -92,8 +92,8 @@ fun OtpExpanded(
                 if (message.isNotBlank()) {
                     Spacer(Modifier.height(6.dp))
                     if (!showMessage) {
-                        Text(
-                            text = stringResource(R.string.island_otp_show_message),
+                        TranslatableText(
+                            stringResId = R.string.island_otp_show_message,
                             style = IslandTextStyles.body,
                             textAlign = TextAlign.Center,
                             modifier = Modifier

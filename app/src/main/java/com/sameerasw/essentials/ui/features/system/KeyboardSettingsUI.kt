@@ -9,6 +9,7 @@
 
 package com.sameerasw.essentials.ui.features.system
 
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -25,7 +26,6 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -39,7 +39,9 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.sameerasw.essentials.FeatureSettingsActivity
 import com.sameerasw.essentials.R
+import com.sameerasw.essentials.translation.TranslatableText
 import com.sameerasw.essentials.ui.components.sliders.ConfigSliderItem
 import com.sameerasw.essentials.ui.core.cards.IconToggleItem
 import com.sameerasw.essentials.ui.core.containers.RoundedCardContainer
@@ -76,8 +78,8 @@ fun KeyboardSettingsUI(
     ) {
         // Keyboard Setup Section
         if (!isKeyboardEnabled || !isKeyboardSelected) {
-            Text(
-                text = stringResource(R.string.label_keyboard_setup),
+            TranslatableText(
+                stringResId = R.string.label_keyboard_setup,
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(start = 12.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -102,7 +104,7 @@ fun KeyboardSettingsUI(
                             modifier = Modifier.size(20.dp),
                         )
                         Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.btn_enable_keyboard))
+                        TranslatableText(R.string.btn_enable_keyboard)
                     }
                 } else if (!isKeyboardSelected) {
                     Button(
@@ -115,7 +117,7 @@ fun KeyboardSettingsUI(
                             modifier = Modifier.size(20.dp),
                         )
                         Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.btn_select_keyboard))
+                        TranslatableText(R.string.btn_select_keyboard)
                     }
                 }
             }
@@ -125,7 +127,7 @@ fun KeyboardSettingsUI(
         OutlinedTextField(
             value = text,
             onValueChange = { text = it },
-            label = { Text(stringResource(R.string.test_keyboard_hint)) },
+            label = { TranslatableText(R.string.test_keyboard_hint) },
             modifier =
                 Modifier
                     .fillMaxWidth()
@@ -134,8 +136,8 @@ fun KeyboardSettingsUI(
         )
 
         // Customization
-        Text(
-            text = stringResource(R.string.feat_system_keys),
+        TranslatableText(
+            stringResId = R.string.feat_system_keys,
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(start = 16.dp),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -190,8 +192,8 @@ fun KeyboardSettingsUI(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp),
             ) {
-                Text(
-                    text = stringResource(R.string.label_keyboard_shape),
+                TranslatableText(
+                    stringResId = R.string.label_keyboard_shape,
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
@@ -232,7 +234,7 @@ fun KeyboardSettingsUI(
                                             .connectedMiddleButtonShapes()
                                 },
                         ) {
-                            Text(stringResource(labelRes))
+                            TranslatableText(labelRes)
                         }
                     }
                 }
@@ -325,7 +327,7 @@ fun KeyboardSettingsUI(
 
             IconToggleItem(
                 iconRes = R.drawable.rounded_book_2_24,
-                title = "User Dictionary (Learn words)",
+                title = stringResource(R.string.keyboard_user_dictionary_title),
                 isChecked = viewModel.isUserDictionaryEnabled.value,
                 onCheckedChange = { viewModel.setUserDictionaryEnabled(it, context) },
                 modifier = Modifier.highlight(highlightSetting == "user_dictionary_enabled"),
@@ -334,12 +336,28 @@ fun KeyboardSettingsUI(
             if (viewModel.isUserDictionaryEnabled.value) {
                 IconToggleItem(
                     iconRes = R.drawable.rounded_settings_24,
-                    title = "Manage Learned Words",
+                    title = stringResource(R.string.keyboard_manage_learned_words),
                     isChecked = false,
                     showToggle = false,
                     onCheckedChange = { viewModel.isUserDictionarySheetVisible.value = true },
                 )
             }
+        }
+
+        RoundedCardContainer(spacing = 2.dp) {
+            IconToggleItem(
+                iconRes = R.drawable.rounded_edit_note_24,
+                title = stringResource(R.string.feat_text_snippets_title),
+                description = stringResource(R.string.feat_text_snippets_desc),
+                showToggle = false,
+                onClick = {
+                    context.startActivity(
+                        Intent(context, FeatureSettingsActivity::class.java).apply {
+                            putExtra("feature", "Text Snippets")
+                        },
+                    )
+                },
+            )
         }
 
         Spacer(Modifier.height(32.dp))

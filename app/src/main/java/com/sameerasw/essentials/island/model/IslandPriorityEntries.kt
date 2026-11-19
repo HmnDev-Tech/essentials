@@ -4,7 +4,9 @@ object IslandPriorityEntries {
     class Entry(val id: String, val pluginIds: Set<String>, val defaultPriority: Int)
 
     val all = listOf(
+        Entry("time", setOf("time"), IslandPriority.TIME),
         Entry("battery", setOf("battery"), IslandPriority.BATTERY_ALERT),
+        Entry("live_updates", setOf("progress"), IslandPriority.PROGRESS),
         Entry("notifications", setOf("notifications"), IslandPriority.NOTIFICATION),
         Entry("flashlight", setOf("flashlight"), IslandPriority.FLASHLIGHT),
         Entry("navigation", setOf("navigation"), IslandPriority.NAVIGATION),
@@ -18,8 +20,11 @@ object IslandPriorityEntries {
         Entry("network", setOf("network", "signal"), IslandPriority.SIGNAL),
         Entry("hotspot", setOf("hotspot"), IslandPriority.HOTSPOT),
         Entry("devices", setOf("devices"), IslandPriority.DEVICES),
+        Entry("starlink", setOf("starlink"), IslandPriority.STARLINK),
         Entry("alarm", setOf("alarm"), IslandPriority.ALARM),
     ).sortedBy { it.defaultPriority }
+
+    const val HIDE_LINE = "__hide_line__"
 
     const val PROVIDER_PREFIX = "provider:"
 
@@ -36,8 +41,13 @@ object IslandPriorityEntries {
 
     fun normalize(saved: List<String>, extra: List<Entry> = emptyList()): List<String> {
         val order = defaultOrder(extra)
-        val known = saved.filter { it in order }.distinct()
-        return known + order.filter { it !in known }
+        val known = saved.filter { it in order }.distinct().toMutableList()
+        val priorities = entries(extra).associate { it.id to it.defaultPriority }
+        order.filter { it !in known }.forEach { id ->
+            val before = known.indexOfFirst { (priorities[it] ?: Int.MAX_VALUE) > (priorities[id] ?: Int.MAX_VALUE) }
+            if (before >= 0) known.add(before, id) else known.add(id)
+        }
+        return known
     }
 
     fun resolve(saved: List<String>?, extra: List<Entry> = emptyList()): Map<String, Int> {

@@ -9,6 +9,8 @@
 
 package com.sameerasw.essentials.services.handlers
 
+import androidx.core.content.ContextCompat
+import com.sameerasw.essentials.R
 import android.accessibilityservice.AccessibilityService
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -113,11 +115,7 @@ class AppFlowHandler(
                 addAction(ACTION_ABORT_FREEZE)
                 addAction(ACTION_RESTORE_NOW)
             }
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(shutUpReceiver, filter, Context.RECEIVER_EXPORTED)
-        } else {
-            context.registerReceiver(shutUpReceiver, filter)
-        }
+        ContextCompat.registerReceiver(context, shutUpReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
         settingsRepository.registerOnSharedPreferenceChangeListener(backGestureConfigsListener)
     }
 
@@ -882,7 +880,7 @@ class AppFlowHandler(
                         context.getString(com.sameerasw.essentials.R.string.app_detection_service_channel_name),
                         NotificationManager.IMPORTANCE_HIGH,
                     ).apply {
-                        description = "Channel for app detection alerts"
+                        description = context.getString(com.sameerasw.essentials.R.string.app_detection_channel_desc)
                     }
             notificationManager.createNotificationChannel(channel)
 
@@ -890,10 +888,10 @@ class AppFlowHandler(
                 android.app
                     .NotificationChannel(
                         "shutup_alerts_channel",
-                        "Shut-Up! Alerts",
+                        context.getString(com.sameerasw.essentials.R.string.shut_up_alerts_channel_name),
                         NotificationManager.IMPORTANCE_MAX,
                     ).apply {
-                        description = "Live update notifications for auto archiving"
+                        description = context.getString(com.sameerasw.essentials.R.string.shut_up_alerts_channel_desc)
                         enableVibration(false)
                         setSound(null, null)
                         lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
@@ -904,10 +902,10 @@ class AppFlowHandler(
                 android.app
                     .NotificationChannel(
                         "shutup_restore_channel",
-                        "Shut-Up! Restore",
+                        context.getString(com.sameerasw.essentials.R.string.shut_up_restore_channel_name),
                         NotificationManager.IMPORTANCE_MAX,
                     ).apply {
-                        description = "Notifications for restoring Shut-Up settings"
+                        description = context.getString(com.sameerasw.essentials.R.string.shut_up_restore_channel_desc)
                         enableVibration(false)
                         setSound(null, null)
                         lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
@@ -942,9 +940,9 @@ class AppFlowHandler(
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
 
-        val title = "Shut-Up active"
-        val text = "Do you want to restore now?"
-        val criticalText = "Restore Now"
+        val title = context.getString(com.sameerasw.essentials.R.string.shut_up_active_title)
+        val text = context.getString(com.sameerasw.essentials.R.string.shut_up_restore_prompt)
+        val criticalText = context.getString(com.sameerasw.essentials.R.string.shut_up_restore_now)
 
         val notification =
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
@@ -965,7 +963,7 @@ class AppFlowHandler(
                                         context,
                                         com.sameerasw.essentials.R.drawable.rounded_code_24,
                                     ),
-                                    "Restore Now",
+                                    criticalText,
                                     restorePendingIntent,
                                 ).build(),
                         )
@@ -998,7 +996,7 @@ class AppFlowHandler(
                     .setOngoing(true)
                     .addAction(
                         com.sameerasw.essentials.R.drawable.rounded_code_24,
-                        "Restore Now",
+                        criticalText,
                         restorePendingIntent,
                     ).addExtras(
                         android.os.Bundle().apply {

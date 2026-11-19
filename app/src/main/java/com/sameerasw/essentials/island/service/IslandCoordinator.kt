@@ -1,6 +1,9 @@
 package com.sameerasw.essentials.island.service
 
+import android.os.PowerManager
+import com.sameerasw.essentials.island.state.IslandStillness
 import android.provider.Settings
+import android.os.SystemClock
 import com.sameerasw.essentials.island.plugins.alarm.AlarmPlugin
 import com.sameerasw.essentials.island.plugins.timer.TimerPlugin
 import com.sameerasw.essentials.island.remote.ProviderTrustStore
@@ -40,6 +43,7 @@ import com.sameerasw.essentials.island.gestures.CompactGestures
 import com.sameerasw.essentials.island.state.IslandUiState
 import com.sameerasw.essentials.island.model.IslandPlugin
 import com.sameerasw.essentials.island.model.IslandPriorityEntries
+import com.sameerasw.essentials.translation.TranslatableText
 import com.sameerasw.essentials.utils.StatusBarManager
 import com.sameerasw.essentials.island.model.IslandPluginContext
 import com.sameerasw.essentials.island.model.IslandStage
@@ -48,6 +52,7 @@ import com.sameerasw.essentials.island.plugins.consciousgate.ConsciousGatePlugin
 import com.sameerasw.essentials.island.plugins.flashlight.FlashlightPlugin
 import com.sameerasw.essentials.island.plugins.navigation.NavigationPlugin
 import com.sameerasw.essentials.island.plugins.hotspot.HotspotPlugin
+import com.sameerasw.essentials.island.plugins.starlink.StarlinkPlugin
 import com.sameerasw.essentials.island.plugins.network.NetworkPlugin
 import com.sameerasw.essentials.island.plugins.signal.SignalPlugin
 import com.sameerasw.essentials.island.plugins.devices.DevicesPlugin
@@ -62,6 +67,9 @@ import com.sameerasw.essentials.island.plugins.media.MediaPlugin
 import com.sameerasw.essentials.island.plugins.notifications.NotificationsPlugin
 import com.sameerasw.essentials.island.plugins.timebattery.TimeBatteryPlugin
 import com.sameerasw.essentials.island.state.CameraAnchor
+import com.sameerasw.essentials.island.state.CompactCellWidths
+import com.sameerasw.essentials.island.state.CompactSideLimits
+import com.sameerasw.essentials.utils.StatusBarLayoutUtil
 import com.sameerasw.essentials.island.state.CameraGeometry
 import com.sameerasw.essentials.island.state.Cancellable
 import com.sameerasw.essentials.island.state.DelayScheduler
@@ -71,8 +79,6 @@ import com.sameerasw.essentials.island.ui.IslandFontFamily
 import com.sameerasw.essentials.island.ui.IslandLayoutSpec
 import com.sameerasw.essentials.island.ui.IslandMotion
 import com.sameerasw.essentials.island.ui.IslandRoot
-import com.sameerasw.essentials.island.ui.QueueStyle
-import com.sameerasw.essentials.island.ui.IslandStackBubble
 import com.sameerasw.essentials.island.ui.IslandStackOverlap
 import com.sameerasw.essentials.island.model.SideBubble
 import com.sameerasw.essentials.island.model.SideBubblePriority
@@ -88,9 +94,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
 import com.sameerasw.essentials.R
 import com.sameerasw.essentials.island.model.CompactCell
 import com.sameerasw.essentials.island.model.CompactPlacement
@@ -99,6 +103,8 @@ import com.sameerasw.essentials.island.model.IslandItem
 import com.sameerasw.essentials.island.model.IslandPriority
 import com.sameerasw.essentials.island.model.LineContent
 import com.sameerasw.essentials.island.ui.components.IslandIcon
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 class IslandCoordinator(
     private val service: AccessibilityService,
@@ -155,6 +161,7 @@ class IslandCoordinator(
         NetworkPlugin(),
         SignalPlugin(),
         HotspotPlugin(),
+        StarlinkPlugin(),
         DevicesPlugin(),
         BriefPlugin(),
     )
@@ -213,9 +220,17 @@ class IslandCoordinator(
         override fun onCollapse() = controller.collapse()
         override fun onDismiss(): Boolean = controller.dismissFocused()
         override fun onInteraction() {
+            pokeStillness()
             controller.onUserInteraction()
             val focused = controller.state.value.focusedKey
             plugins.forEach { it.onUserInteraction(focused) }
+        }
+
+        override fun onHold(held: Boolean) {
+            mainHandler.removeCallbacks(holdTick)
+            controller.setUserHold(held)
+            onInteraction()
+            if (held) mainHandler.postDelayed(holdTick, HOLD_TICK_MS)
         }
 
         override fun onTextInputChanged(active: Boolean) {
@@ -228,6 +243,13 @@ class IslandCoordinator(
         override fun onOpenFocused() {
             controller.state.value.focused?.onOpen?.invoke()
             controller.collapse()
+        }
+    }
+
+    private val powerSaveReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            pokeStillness()
+            applyConfig()
         }
     }
 
@@ -255,12 +277,17 @@ class IslandCoordinator(
                 addAction(Intent.ACTION_USER_PRESENT)
             },
         )
+        service.registerReceiver(powerSaveReceiver, IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED))
         controller.fallbackTapKey = { BriefPlugin.ITEM_KEY.takeIf { settings.isIslandBriefEnabled() } }
+        controller.opensOnExpandedTap = { it.key != BriefPlugin.ITEM_KEY && settings.isIslandTapToOpenExpandedEnabled() }
         controller.onStageChanged = { stage ->
             if (stage != IslandStage.Expanded) windowHost.setTextInput(false)
             windowHost.onStageChanged(stage)
             syncStatusBar()
             reportVisibility(stage != IslandStage.Hidden)
+        }
+        controller.onStateChanged = { state ->
+            reportCameraOccupied(state.stage != IslandStage.Hidden && !(state.stage == IslandStage.Compact && state.arrangement.visibleItems.isEmpty()))
         }
         settings.setIslandPreviewRingEnabled(false)
         settings.setIslandPreviewStage(SettingsRepository.ISLAND_PREVIEW_STAGE_AUTO)
@@ -271,6 +298,15 @@ class IslandCoordinator(
     var onVisibilityChanged: ((Boolean) -> Unit)? = null
     private var lastVisible = false
 
+    var onCameraOccupiedChanged: ((Boolean) -> Unit)? = null
+    private var lastCameraOccupied = false
+
+    private fun reportCameraOccupied(occupied: Boolean) {
+        if (occupied == lastCameraOccupied) return
+        lastCameraOccupied = occupied
+        onCameraOccupiedChanged?.invoke(occupied)
+    }
+
     private fun reportVisibility(visible: Boolean) {
         if (visible == lastVisible) return
         lastVisible = visible
@@ -279,6 +315,21 @@ class IslandCoordinator(
 
     fun openBrief() {
         mainHandler.post { controller.expand(BriefPlugin.ITEM_KEY) }
+    }
+
+    fun openBriefIfEnabled() {
+        if (settings.isIslandBriefEnabled()) openBrief()
+    }
+
+    fun openHub() {
+        mainHandler.post {
+            val state = controller.state.value
+            val hub = state.items[NotificationsPlugin.ITEM_KEY]?.takeIf { it.expanded != null }
+            when {
+                hub != null -> controller.expand(hub.key)
+                settings.isIslandBriefEnabled() -> controller.expand(BriefPlugin.ITEM_KEY)
+            }
+        }
     }
 
     fun updateState() {
@@ -293,11 +344,42 @@ class IslandCoordinator(
         }
     }
 
-    // Anything the user touches outside the island collapses the expanded card, when enabled.
+    private var autoExpandedAt = 0L
+
+    private val stillRunnable = Runnable {
+        val stage = controller.state.value.stage
+        if (running && preferStill() && (stage == IslandStage.Compact || stage == IslandStage.Hidden)) {
+            setStill(true)
+        }
+    }
+
+    private fun preferStill(): Boolean =
+        settings.isIslandPreferStillEnabled() || service.getSystemService(PowerManager::class.java)?.isPowerSaveMode == true
+
+    private fun pokeStillness() {
+        mainHandler.removeCallbacks(stillRunnable)
+        setStill(false)
+        if (running && preferStill()) mainHandler.postDelayed(stillRunnable, IslandStillness.IDLE_MS)
+    }
+
+    private fun setStill(still: Boolean) {
+        if (IslandStillness.set(still) && running) plugins.forEach { it.refresh() }
+    }
+
+    private val holdTick: Runnable = object : Runnable {
+        override fun run() {
+            val focused = controller.state.value.focusedKey
+            plugins.forEach { it.onUserInteraction(focused) }
+            mainHandler.postDelayed(this, HOLD_TICK_MS)
+        }
+    }
+
     private fun onOutsideTouch() {
         if (!running || !settings.isIslandDismissOnOutsideEnabled()) return
         if (textInputActive) return
+        if (settings.getIslandPreviewStage() == SettingsRepository.ISLAND_PREVIEW_STAGE_EXPANDED) return
         if (controller.state.value.stage != IslandStage.Expanded) return
+        if (SystemClock.uptimeMillis() - autoExpandedAt < OUTSIDE_DISMISS_GRACE_MS) return
         mainHandler.post { controller.collapse() }
     }
 
@@ -342,8 +424,16 @@ class IslandCoordinator(
         controller.setLauncherState(onLauncher, sources, ProviderTrustStore(settings).launcherOnly())
     }
 
+    private fun applyUpdateOnly() {
+        controller.setUpdateOnly(emptySet(), ProviderTrustStore(settings).showOnUpdate(), settings.getIslandPeekDurationMs())
+    }
+
     private fun applyOwnerAppHiding() {
-        controller.setHiddenPackage(foregroundPackage.takeIf { settings.isIslandHideInOwnerAppEnabled() })
+        when {
+            settings.isIslandHideInOwnerAppEnabled() -> controller.setHiddenPackage(foregroundPackage)
+            settings.isIslandHideMediaInOwnerAppEnabled() -> controller.setHiddenPackage(foregroundPackage, setOf(MediaPlugin.ID))
+            else -> controller.setHiddenPackage(null)
+        }
     }
 
     fun updateConsciousGateState() {
@@ -362,7 +452,11 @@ class IslandCoordinator(
             if (pendingFullscreen == fullscreen) return@post
             pendingFullscreen = fullscreen
             mainHandler.removeCallbacks(applyFullscreen)
-            if (isFullscreenApp != fullscreen) mainHandler.postDelayed(applyFullscreen, SETTLE_MS)
+            when {
+                isFullscreenApp == fullscreen -> Unit
+                fullscreen -> applyFullscreen.run()
+                else -> mainHandler.postDelayed(applyFullscreen, SETTLE_MS)
+            }
         }
     }
 
@@ -378,7 +472,11 @@ class IslandCoordinator(
             if (pendingShadeExpanded == expanded) return@post
             pendingShadeExpanded = expanded
             mainHandler.removeCallbacks(applyShadeExpanded)
-            if (isShadeExpanded != expanded) mainHandler.postDelayed(applyShadeExpanded, SETTLE_MS)
+            when {
+                isShadeExpanded == expanded -> Unit
+                expanded -> applyShadeExpanded.run()
+                else -> mainHandler.postDelayed(applyShadeExpanded, SETTLE_MS)
+            }
         }
     }
 
@@ -401,6 +499,7 @@ class IslandCoordinator(
     }
 
     fun onDestroy() {
+        mainHandler.removeCallbacks(attachRetry)
         mainHandler.removeCallbacks(applyForegroundPackage)
         mainHandler.removeCallbacks(applyFullscreen)
         mainHandler.removeCallbacks(applyShadeExpanded)
@@ -409,7 +508,26 @@ class IslandCoordinator(
             service.unregisterReceiver(screenReceiver)
         } catch (_: Exception) {
         }
+        try {
+            service.unregisterReceiver(powerSaveReceiver)
+        } catch (_: Exception) {
+        }
         stop()
+    }
+
+    private var attachRetries = 0
+    private val attachRetry = Runnable {
+        if (!running && settings.isIslandEnabled() && !isWindowSuppressed) start()
+    }
+
+    private fun scheduleAttachRetry() {
+        if (attachRetries >= MAX_ATTACH_RETRIES) {
+            attachRetries = 0
+            return
+        }
+        attachRetries++
+        mainHandler.removeCallbacks(attachRetry)
+        mainHandler.postDelayed(attachRetry, ATTACH_RETRY_BASE_MS * attachRetries)
     }
 
     private fun start() {
@@ -424,8 +542,15 @@ class IslandCoordinator(
         revealing = true
         controller.setSuppressed(true)
         applyLauncherOnly()
+        applyUpdateOnly()
         val newScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
         scope = newScope
+        newScope.launch {
+            controller.state
+                .map { Triple(it.stage, it.focusedKey, it.arrangement.visibleItems) }
+                .distinctUntilChanged()
+                .collect { pokeStillness() }
+        }
         applyConfig()
         val geo = geometry ?: return
         windowHost.onOutsideTouch = ::onOutsideTouch
@@ -448,6 +573,7 @@ class IslandCoordinator(
                         state, layoutSpec, actions, windowHost::onTargetBoundsChanged,
                         registerCollapseAnimator = { controller.collapseAnimator = it },
                         showCameraRing = ring,
+                        cameraGeometry = geometry,
                     )
                 }
             }
@@ -458,8 +584,10 @@ class IslandCoordinator(
             revealing = false
             newScope.cancel()
             scope = null
+            scheduleAttachRetry()
             return
         }
+        attachRetries = 0
         mainHandler.postDelayed(endReveal, REVEAL_DELAY_MS)
         val context = IslandPluginContext(
             service = service,
@@ -489,6 +617,7 @@ class IslandCoordinator(
                 .distinctUntilChanged()
                 .collect { (stage, key) -> plugins.forEach { it.onFocusChanged(stage, key) } }
         }
+        controller.onAutoExpand = { autoExpandedAt = SystemClock.uptimeMillis() }
         newScope.launch { IslandPreviewRequests.queue.collect { showQueuePreview() } }
         if (settings.isIslandSuppressSystemHeadsUpEnabled()) settings.applyHeadsUpSuppression(true)
         applyPreviewStage()
@@ -507,7 +636,7 @@ class IslandCoordinator(
                 settings.getIslandNotifPeekStyle() == SettingsRepository.ISLAND_NOTIF_PEEK_STYLE_MINIMAL
             val layout = when {
                 !minimal -> QueuePreviewLayout.Peek
-                settings.isIslandNotifQueueInlineEnabled() -> QueuePreviewLayout.MinimalInline
+                !settings.isIslandSecondaryBubbleEnabled() -> QueuePreviewLayout.MinimalInline
                 else -> QueuePreviewLayout.MinimalStack
             }
             controller.holdFocus = layout == QueuePreviewLayout.Peek
@@ -518,7 +647,6 @@ class IslandCoordinator(
                         service.getString(R.string.island_preview_sample_title),
                         service.getString(R.string.island_preview_sample_text),
                         layout,
-                        overlap = settings.getIslandNotifQueueStyle() == SettingsRepository.ISLAND_NOTIF_QUEUE_STYLE_OVERLAP,
                     ),
                 ),
             )
@@ -574,8 +702,8 @@ class IslandCoordinator(
                     .padding(horizontal = 20.dp)
                     .padding(top = scope.spec.expandedTopPadding + scope.spec.compactHeight, bottom = scope.spec.expandedBottomPadding),
             ) {
-                Text(stringResource(R.string.island_preview_sample_title), style = MaterialTheme.typography.titleMedium)
-                Text(stringResource(R.string.island_preview_sample_text), style = MaterialTheme.typography.bodyMedium)
+                TranslatableText(R.string.island_preview_sample_title, style = MaterialTheme.typography.titleMedium)
+                TranslatableText(R.string.island_preview_sample_text, style = MaterialTheme.typography.bodyMedium)
             }
         },
         compactVisible = false,
@@ -583,14 +711,14 @@ class IslandCoordinator(
 
     private enum class QueuePreviewLayout { Peek, MinimalInline, MinimalStack }
 
-    private fun queuePreviewItem(title: String, text: String, layout: QueuePreviewLayout, overlap: Boolean): IslandItem {
+    private fun queuePreviewItem(title: String, text: String, layout: QueuePreviewLayout): IslandItem {
         fun icon(key: String, current: Boolean = false) = StackIcon(key, current = current) { size ->
             IslandIcon(R.drawable.rounded_notifications_unread_24, size = size * 0.7f)
         }
         val waiting = listOf(icon("$QUEUE_PREVIEW_KEY.1"), icon("$QUEUE_PREVIEW_KEY.2"))
         val iconCell = CompactCell("preview.queue.icon") { IslandIcon(R.drawable.rounded_notifications_unread_24, size = 18.dp) }
         val queueCell = CompactCell("preview.queue.stack") {
-            if (overlap) IslandStackOverlap(waiting, 22.dp) else IslandStackBubble(waiting, 26.dp)
+            IslandStackOverlap(waiting, 22.dp)
         }
         return IslandItem(
             key = QUEUE_PREVIEW_KEY,
@@ -637,6 +765,8 @@ class IslandCoordinator(
             return
         }
         mainHandler.removeCallbacks(endReveal)
+        mainHandler.removeCallbacks(stillRunnable)
+        IslandStillness.set(false)
         revealing = false
         running = false
         controller.holdFocus = false
@@ -649,13 +779,24 @@ class IslandCoordinator(
         }
         scope?.cancel()
         scope = null
+        mainHandler.removeCallbacks(statusBarPoll)
+        mainHandler.removeCallbacks(widthRelayout)
+        mainHandler.removeCallbacks(holdTick)
+        controller.setUserHold(false)
+        CompactCellWidths.onChange = null
+        controller.compactCellWidth = { 1f }
+        controller.compactBubbleWidth = { it.toFloat() }
+        CompactSideLimits.set(Int.MAX_VALUE, Int.MAX_VALUE)
         windowHost.detach()
         reportVisibility(false)
+        reportCameraOccupied(false)
         IslandStatusBarHider.restore(service)
         if (settings.isIslandSuppressSystemHeadsUpEnabled()) settings.applyHeadsUpSuppression(false)
     }
 
     private fun applyConfig() {
+        val powerSaving = service.getSystemService(PowerManager::class.java)?.isPowerSaveMode == true
+        val transparent = !powerSaving && settings.isIslandTransparencyEnabled()
         val geo = CameraGeometryResolver.resolve(service, wm, settings)
         geometry = geo
         val density = service.resources.displayMetrics.density
@@ -676,6 +817,7 @@ class IslandCoordinator(
         spec.value = IslandLayoutSpec(
             cameraDiameter = (geo.diameter / density).dp,
             cameraGap = (geo.gap / density).dp,
+            contentGap = (geo.contentGap / density).dp,
             verticalGap = (geo.verticalGap / density).dp,
             surfaceTop = (geo.surfaceTop / density).dp,
             lineWidth = lineWidth.dp,
@@ -683,6 +825,7 @@ class IslandCoordinator(
             expandedCorner = settings.getIslandExpandedRoundness().dp,
             expandedPadding = settings.getIslandExpandedPadding().dp,
             expandedTopPadding = settings.getIslandExpandedTopPadding().dp,
+            expandedOffsetY = settings.getIslandExpandedOffsetY().coerceIn(0f, 120f).dp,
             expandedBottomPadding = settings.getIslandExpandedBottomPadding().dp,
             expandedScale = scale,
             fontScale = settings.getIslandFontScale().coerceIn(0.8f, 1.3f),
@@ -692,6 +835,21 @@ class IslandCoordinator(
             landscape = isLandscape,
             bondEdge = !geo.hasCamera && settings.isIslandBondEdgeEnabled(),
             balanceCompact = settings.isIslandBalanceCompactEnabled(),
+            dismissDown = settings.getIslandDismissDirection() == SettingsRepository.ISLAND_DISMISS_DOWN,
+            gestureHints = settings.isIslandGestureHintsEnabled(),
+            neuralExpressive = transparent && settings.isIslandNeuralExpressiveEnabled(),
+            neuralExpressiveAlways = settings.isIslandNeuralExpressiveAlwaysEnabled(),
+            glowIntensity = if (settings.isIslandShowGlowEnabled()) settings.getIslandGlowIntensity().coerceIn(0f, 2f) else 0f,
+            glowSize = settings.getIslandGlowSize().coerceIn(0.25f, 2f),
+            glowRim = settings.isIslandGlowRimEnabled(),
+            glowColor = if (settings.isIslandGlowDynamicEnabled()) null else {
+                runCatching { Color(AndroidColor.parseColor(settings.getIslandGlowColor())) }.getOrNull()
+            },
+            transparency = transparent,
+            backdropBlur = transparent && settings.isIslandBackdropBlurEnabled(),
+            backdropBlurRadius = settings.getIslandBackdropBlurRadius().coerceIn(5f, 120f).dp,
+            transparencyIntensity = settings.getIslandTransparencyIntensity().coerceIn(0.25f, 5f),
+            progressiveBlur = transparent && !powerSaving && settings.isIslandProgressiveBlurEnabled(),
             maxExpandedHeight = if (isLandscape) ((geo.screenHeight - geo.surfaceTop) / density - 12f).dp else Dp.Unspecified,
             outlineColor = if (settings.isIslandBorderOutlineEnabled()) {
                 runCatching { Color(AndroidColor.parseColor(settings.getIslandBorderOutlineColor())) }
@@ -700,18 +858,16 @@ class IslandCoordinator(
                 null
             },
             outlineDynamic = settings.isIslandBorderOutlineDynamicEnabled(),
-            outlineThickness = settings.getIslandBorderOutlineThickness().coerceIn(1f, 5f).dp,
+            outlineThickness = settings.getIslandBorderOutlineThickness().coerceIn(0.5f, 5f).dp,
             outlineHiddenWhenExpanded = settings.isIslandBorderOutlineHiddenWhenExpanded(),
             pulseShadow = settings.isIslandPulseShadowEnabled(),
-            pulseSize = settings.getIslandPulseShadowSize().coerceIn(0.2f, 1f),
-            pulseYShift = settings.getIslandPulseShadowYShift().coerceIn(0f, 1f),
-            pulseSpread = settings.getIslandPulseShadowSpread().coerceIn(1f, 4f),
+            pulseBlur = settings.getIslandPulseShadowBlur().coerceIn(0f, 48f).dp,
+            pulseSpread = settings.getIslandPulseShadowSpread().coerceIn(0f, 24f).dp,
+            pulseOffsetY = settings.getIslandPulseShadowOffsetY().coerceIn(-8f, 16f).dp,
+            pulseOpacity = settings.getIslandPulseShadowOpacity().coerceIn(0.1f, 1f),
             pulseDurationMs = settings.getIslandPulseShadowDurationMs().coerceIn(300f, 4000f).toInt(),
-            queueStyle = when (settings.getIslandNotifQueueStyle()) {
-                SettingsRepository.ISLAND_NOTIF_QUEUE_STYLE_OVERLAP -> QueueStyle.Overlap
-                else -> QueueStyle.Stack
-            },
-            queueInline = settings.isIslandNotifQueueInlineEnabled(),
+            queueInline = !settings.isIslandSecondaryBubbleEnabled(),
+            bubbleOnRight = settings.getIslandSecondaryBubbleSide() == SettingsRepository.ISLAND_CAMERA_POSITION_RIGHT,
             iconColorCustom = if (iconCustomMode && !iconMaterialYou) {
                 runCatching {
                     Color(AndroidColor.parseColor(settings.getString(SettingsRepository.KEY_ISLAND_ICON_COLOR_CUSTOM, null) ?: "#FFFFFF"))
@@ -728,13 +884,130 @@ class IslandCoordinator(
         windowHost.updateGeometry(geo)
         controller.lineStageEnabled = settings.isIslandLineStageEnabled()
         controller.maxCells = settings.getIslandMaxItems() * 2
+        compactMaxWidthPx = (lineWidth * density).toInt()
+        applyStatusBarAwareWidth()
         controller.balanceCompact = settings.isIslandBalanceCompactEnabled()
+        controller.persistentOrder = settings.isIslandPersistentOrderEnabled()
         controller.chipsEnabled = settings.getBoolean(SettingsRepository.KEY_ISLAND_CHIPS, false)
         controller.secondaryBubbleEnabled = settings.isIslandSecondaryBubbleEnabled()
-        controller.secondaryBubbleOverlap = settings.getIslandNotifQueueStyle() == SettingsRepository.ISLAND_NOTIF_QUEUE_STYLE_OVERLAP
+        controller.secondaryBubbleMax = settings.getIslandNotifHubIcons()
+        controller.bubbleOnRight = settings.getIslandSecondaryBubbleSide() == SettingsRepository.ISLAND_CAMERA_POSITION_RIGHT
         controller.relayout()
         controller.expandedTimeoutMs = settings.getIslandExpandedTimeoutMs()
         applyPreviewRing()
+    }
+
+    private var statusBarEdges: StatusBarLayoutUtil.Edges? = null
+    private var pendingStatusBarEdges: StatusBarLayoutUtil.Edges? = null
+
+    private fun StatusBarLayoutUtil.Edges?.closeTo(other: StatusBarLayoutUtil.Edges?): Boolean {
+        if (this == null || other == null) return this == other
+        val tolerance = (STATUS_BAR_TOLERANCE_DP * service.resources.displayMetrics.density).toInt()
+        fun near(a: Int?, b: Int?) = if (a == null || b == null) a == b else abs(a - b) <= tolerance
+        return near(startContentEnd, other.startContentEnd) && near(endContentStart, other.endContentStart)
+    }
+
+    private val statusBarPoll = object : Runnable {
+        override fun run() {
+            val stage = controller.state.value.stage
+            if (stage == IslandStage.Compact || stage == IslandStage.Hidden) {
+                val edges = StatusBarLayoutUtil.edges(service, settings.isIslandStatusBarIgnoreNotificationsEnabled())
+                val stable = edges.closeTo(pendingStatusBarEdges)
+                pendingStatusBarEdges = edges
+                if (stable && !edges.closeTo(statusBarEdges)) {
+                    statusBarEdges = edges
+                    controller.relayout()
+                    publishSideLimits()
+                }
+            }
+            mainHandler.postDelayed(this, STATUS_BAR_POLL_MS)
+        }
+    }
+
+    private fun applyStatusBarAwareWidth() {
+        mainHandler.removeCallbacks(statusBarPoll)
+        controller.compactFits = ::fitsCompactWidth
+        controller.compactCellWidth = ::compactCellUnits
+        controller.compactBubbleWidth = { cells ->
+            maxOf(cells.toFloat(), ((CompactCellWidths.bubbleExtent / compactCellUnitPx().coerceAtLeast(1f)) * 4f).roundToInt() / 4f)
+        }
+        CompactCellWidths.onChange = {
+            mainHandler.removeCallbacks(widthRelayout)
+            mainHandler.post(widthRelayout)
+        }
+        if (!settings.isIslandStatusBarAwareWidthEnabled()) {
+            statusBarEdges = null
+            pendingStatusBarEdges = null
+            publishSideLimits()
+            return
+        }
+        publishSideLimits()
+        StatusBarLayoutUtil.ensureFlags(service)
+        mainHandler.post(statusBarPoll)
+    }
+
+    private var compactMaxWidthPx = Int.MAX_VALUE
+
+    private fun sideRooms(): Pair<Int, Int> {
+        val geo = geometry ?: return Int.MAX_VALUE to Int.MAX_VALUE
+        val slot = geo.cameraSlotWidth.toInt()
+        val maxSide = if (compactMaxWidthPx == Int.MAX_VALUE) Int.MAX_VALUE else when (geo.anchor) {
+            CameraAnchor.Center -> (compactMaxWidthPx - slot) / 2
+            else -> compactMaxWidthPx - slot
+        }.coerceAtLeast(0)
+        var left = maxSide
+        var right = maxSide
+        statusBarEdges?.let { edges ->
+            val margin = (STATUS_BAR_MARGIN_DP * service.resources.displayMetrics.density).toInt()
+            val half = geo.cameraSlotWidth / 2f
+            edges.startContentEnd?.let { left = minOf(left, ((geo.centerX - half).toInt() - it - margin).coerceAtLeast(0)) }
+            edges.endContentStart?.let { right = minOf(right, (it - (geo.centerX + half).toInt() - margin).coerceAtLeast(0)) }
+        }
+        return left to right
+    }
+
+    private fun publishSideLimits() {
+        val (left, right) = sideRooms()
+        val mirrored = geometry?.anchor == CameraAnchor.Center && controller.state.value.sideBubble == null && settings.isIslandBalanceCompactEnabled()
+        if (mirrored) {
+            val both = minOf(left, right)
+            CompactSideLimits.set(both, both)
+        } else {
+            CompactSideLimits.set(left, right)
+        }
+    }
+
+    private val widthRelayout = Runnable { controller.relayout() }
+
+    private fun compactCellUnitPx(): Float = geometry?.let { it.contentSize + it.contentGap } ?: 0f
+
+    private fun compactCellUnits(key: String): Float {
+        val px = CompactCellWidths.get(key) ?: return 1f
+        if (px == 0) return 0f
+        val unit = compactCellUnitPx().takeIf { it > 0f } ?: return 1f
+        return (((px + (geometry?.contentGap ?: 0f)) / unit) * 4f).roundToInt() / 4f
+    }
+
+    private fun fitsCompactWidth(before: List<String>, after: List<String>, leftExtra: Int, hubFactor: Float, growing: Boolean): Int? {
+        val geo = geometry ?: return 0
+        val density = service.resources.displayMetrics.density
+        val cell = geo.contentSize.toInt()
+        val spacing = geo.contentGap.toInt()
+        val inset = geo.edgeInset.toInt()
+        fun need(keys: List<String>, extra: Int): Int =
+            if (keys.isEmpty() && extra == 0) 0 else keys.sumOf { CompactCellWidths.get(it) ?: cell } + spacing * keys.size + inset +
+                if (extra > 0) (geo.compactHeight * hubFactor).roundToInt() + spacing else 0
+        val slack = if (growing) (GROW_SLACK_DP * density).toInt() else 0
+        val (leftRoom, rightRoom) = sideRooms()
+        val left = if (leftRoom == Int.MAX_VALUE) leftRoom else leftRoom - slack
+        val right = if (rightRoom == Int.MAX_VALUE) rightRoom else rightRoom - slack
+        val extraRight = geo.anchor == CameraAnchor.Center && controller.bubbleOnRight
+        val needLeft = need(before, if (extraRight) 0 else leftExtra)
+        val needRight = need(after, if (extraRight) leftExtra else 0)
+        if (needLeft > left || needRight > right) return null
+        val mirrored = geo.anchor == CameraAnchor.Center && leftExtra == 0 && settings.isIslandBalanceCompactEnabled()
+        if (mirrored && maxOf(needLeft, needRight) > minOf(left, right)) return null
+        return maxOf(needLeft, needRight)
     }
 
     private var lastContentSuppressed = false
@@ -794,12 +1067,14 @@ class IslandCoordinator(
             SettingsRepository.KEY_ISLAND_HIDE_PORTRAIT,
             SettingsRepository.KEY_ISLAND_HIDE_LANDSCAPE -> updateState()
             SettingsRepository.KEY_ISLAND_ALWAYS_GESTURES -> syncGestureHitbox()
+            SettingsRepository.KEY_ISLAND_PREFER_STILL -> pokeStillness()
             SettingsRepository.KEY_ISLAND_PRIORITY_ORDER, SettingsRepository.KEY_ISLAND_PROVIDERS -> if (running) reloadPriorities()
             SettingsRepository.KEY_ISLAND_DYNAMIC_HIDE_STATUS_BAR, SettingsRepository.KEY_ISLAND_COMPACT_HIDE_STATUS_BAR,
             SettingsRepository.KEY_ISLAND_HIDE_ICONS_ENABLED, SettingsRepository.KEY_ISLAND_HIDE_ICONS -> syncStatusBar()
             SettingsRepository.KEY_ISLAND_HIDE_WHEN_SCREEN_OFF, SettingsRepository.KEY_ISLAND_SHOW_WHEN -> applySuppression()
-            SettingsRepository.KEY_ISLAND_HIDE_IN_OWNER_APP -> applyOwnerAppHiding()
+            SettingsRepository.KEY_ISLAND_HIDE_IN_OWNER_APP, SettingsRepository.KEY_ISLAND_HIDE_MEDIA_IN_OWNER_APP -> applyOwnerAppHiding()
             in LAUNCHER_ONLY_KEYS.values, SettingsRepository.KEY_ISLAND_PROVIDERS_LAUNCHER_ONLY -> applyLauncherOnly()
+            SettingsRepository.KEY_ISLAND_PROVIDERS_ON_UPDATE, SettingsRepository.KEY_ISLAND_PEEK_DURATION_MS -> applyUpdateOnly()
             SettingsRepository.KEY_ISLAND_HIDE_ON_SHADE -> applySuppression()
             SettingsRepository.KEY_ISLAND_PREVIEW_RING -> if (running) applyPreviewRing()
             SettingsRepository.KEY_ISLAND_PREVIEW_STAGE -> applyPreviewStage()
@@ -812,8 +1087,12 @@ class IslandCoordinator(
 
     private companion object {
         const val REVEAL_DELAY_MS = 160L
+        const val OUTSIDE_DISMISS_GRACE_MS = 1000L
         const val HIDE_SETTLE_MS = 700L
         const val SETTLE_MS = 300L
+        const val MAX_ATTACH_RETRIES = 4
+        const val ATTACH_RETRY_BASE_MS = 60L
+        const val HOLD_TICK_MS = 1000L
         const val PREVIEW_SOURCE = "preview"
         const val PREVIEW_KEY = "preview.sample"
         const val QUEUE_PREVIEW_SOURCE = "preview.queue"
@@ -825,14 +1104,16 @@ class IslandCoordinator(
             "alarm" to SettingsRepository.KEY_ISLAND_ALARM_LAUNCHER_ONLY,
         )
         val CONFIG_KEYS = setOf(
-            SettingsRepository.KEY_ISLAND_NOTIF_QUEUE_STYLE,
-            SettingsRepository.KEY_ISLAND_NOTIF_QUEUE_INLINE,
+            SettingsRepository.KEY_ISLAND_NOTIF_THEMED_BUBBLE,
+            SettingsRepository.KEY_ISLAND_SECONDARY_BUBBLE_SIDE,
+            SettingsRepository.KEY_ISLAND_SECONDARY_BUBBLE,
             SettingsRepository.KEY_ISLAND_USE_AUTO_DETECT,
             SettingsRepository.KEY_ISLAND_CAMERA_OFFSET_X,
             SettingsRepository.KEY_ISLAND_CAMERA_OFFSET_Y,
             SettingsRepository.KEY_ISLAND_CAMERA_SIZE,
             SettingsRepository.KEY_ISLAND_MAX_WIDTH,
             SettingsRepository.KEY_ISLAND_CUTOUT_GAP,
+            SettingsRepository.KEY_ISLAND_PADDING_AROUND,
             SettingsRepository.KEY_ISLAND_EXPANDED_WIDTH,
             SettingsRepository.KEY_ISLAND_ICON_COLOR_MODE,
             SettingsRepository.KEY_ISLAND_ICON_COLOR_CUSTOM,
@@ -845,13 +1126,15 @@ class IslandCoordinator(
             SettingsRepository.KEY_ISLAND_BORDER_OUTLINE_THICKNESS,
             SettingsRepository.KEY_ISLAND_BORDER_OUTLINE_HIDE_EXPANDED,
             SettingsRepository.KEY_ISLAND_PULSE_SHADOW_ON_NOTIFICATION,
-            SettingsRepository.KEY_ISLAND_PULSE_SHADOW_SIZE,
-            SettingsRepository.KEY_ISLAND_PULSE_SHADOW_Y_SHIFT,
-            SettingsRepository.KEY_ISLAND_PULSE_SHADOW_SPREAD,
+            SettingsRepository.KEY_ISLAND_PULSE_SHADOW_BLUR,
+            SettingsRepository.KEY_ISLAND_PULSE_SHADOW_SPREAD_DP,
+            SettingsRepository.KEY_ISLAND_PULSE_SHADOW_OFFSET_Y,
+            SettingsRepository.KEY_ISLAND_PULSE_SHADOW_OPACITY,
             SettingsRepository.KEY_ISLAND_PULSE_SHADOW_DURATION_MS,
             SettingsRepository.KEY_ISLAND_EXPANDED_ROUNDNESS,
             SettingsRepository.KEY_ISLAND_EXPANDED_PADDING,
             SettingsRepository.KEY_ISLAND_EXPANDED_TOP_PADDING,
+            SettingsRepository.KEY_ISLAND_EXPANDED_OFFSET_Y,
             SettingsRepository.KEY_ISLAND_EXPANDED_BOTTOM_PADDING,
             SettingsRepository.KEY_ISLAND_EXPANDED_TIMEOUT_MS,
             SettingsRepository.KEY_ISLAND_LINE_STAGE_ENABLED,
@@ -865,9 +1148,33 @@ class IslandCoordinator(
             SettingsRepository.KEY_ISLAND_LANDSCAPE_TOP_SPACING,
             SettingsRepository.KEY_ISLAND_BOND_EDGE,
             SettingsRepository.KEY_ISLAND_BALANCE_COMPACT,
+            SettingsRepository.KEY_ISLAND_PERSISTENT_ORDER,
+            SettingsRepository.KEY_ISLAND_DISMISS_DIRECTION,
+            SettingsRepository.KEY_ISLAND_GESTURE_HINTS,
+            SettingsRepository.KEY_ISLAND_NEURAL_EXPRESSIVE,
+            SettingsRepository.KEY_ISLAND_NEURAL_EXPRESSIVE_ALWAYS,
+            SettingsRepository.KEY_ISLAND_TRANSPARENCY,
+            SettingsRepository.KEY_ISLAND_TRANSPARENCY_INTENSITY,
+            SettingsRepository.KEY_ISLAND_BACKDROP_BLUR,
+            SettingsRepository.KEY_ISLAND_BACKDROP_BLUR_RADIUS,
+            SettingsRepository.KEY_ISLAND_PROGRESSIVE_BLUR,
+            SettingsRepository.KEY_ISLAND_SHOW_GLOW,
+            SettingsRepository.KEY_ISLAND_GLOW_INTENSITY,
+            SettingsRepository.KEY_ISLAND_GLOW_SIZE,
+            SettingsRepository.KEY_ISLAND_GLOW_RIM,
+            SettingsRepository.KEY_ISLAND_GLOW_DYNAMIC,
+            SettingsRepository.KEY_ISLAND_GLOW_COLOR,
             SettingsRepository.KEY_ISLAND_SECONDARY_BUBBLE,
+            SettingsRepository.KEY_ISLAND_NOTIF_HUB_ICONS,
+            SettingsRepository.KEY_ISLAND_SECONDARY_BUBBLE_SIDE,
             SettingsRepository.KEY_ISLAND_MAX_ITEMS,
+            SettingsRepository.KEY_ISLAND_STATUSBAR_AWARE_WIDTH,
+            SettingsRepository.KEY_ISLAND_STATUSBAR_IGNORE_NOTIFICATIONS,
         )
+        private const val STATUS_BAR_POLL_MS = 1000L
+        private const val STATUS_BAR_MARGIN_DP = 10f
+        private const val STATUS_BAR_TOLERANCE_DP = 2f
+        private const val GROW_SLACK_DP = 12f
     }
 }
 

@@ -76,6 +76,7 @@ object DIYRepository {
     private var appContext: Context? = null
 
     fun init(context: Context) {
+        DIYRuntimeStore.init(context)
         appContext = context.applicationContext
         if (prefs != null) return
         prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -132,6 +133,15 @@ object DIYRepository {
     }
 
     fun getAutomation(id: String): Automation? = _automations.value.find { it.id == id }
+
+    fun automationToJson(automation: Automation): JsonElement = gson.toJsonTree(automation)
+
+    fun automationFromJson(element: JsonElement): Automation? =
+        try {
+            gson.fromJson(element, Automation::class.java)
+        } catch (e: Exception) {
+            null
+        }
 
     private fun updateActionShortcutLauncherState() {
         val context = appContext ?: return

@@ -9,6 +9,7 @@
 
 package com.sameerasw.essentials.ui.composables
 
+import com.sameerasw.essentials.translation.TranslatableText
 import com.sameerasw.essentials.ui.navigation.LocalOpenAutomationId
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
@@ -65,6 +66,7 @@ import com.sameerasw.essentials.domain.diy.Automation
 import com.sameerasw.essentials.ui.activities.AutomationEditorActivity
 import com.sameerasw.essentials.ui.components.diy.AutomationItem
 import com.sameerasw.essentials.ui.core.containers.RoundedCardContainer
+import com.sameerasw.essentials.ui.core.sheets.AutomationShareSheet
 import com.sameerasw.essentials.ui.core.sheets.NewAutomationSheet
 import com.sameerasw.essentials.ui.modifiers.scrollMotionBlur
 import com.sameerasw.essentials.utils.HapticUtil
@@ -86,6 +88,7 @@ fun DIYScreen(
     var showGenAIPill by remember { mutableStateOf(false) }
     val genAIState by viewModel.genAIState.collectAsState()
 
+    var shareTarget by remember { mutableStateOf<Automation?>(null) }
     var selectionMode by remember { mutableStateOf(false) }
     var selectedIds by remember { mutableStateOf(emptySet<String>()) }
 
@@ -122,8 +125,8 @@ fun DIYScreen(
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Text(
-                            text = "No automations yet",
+                        TranslatableText(
+                            stringResId = R.string.diy_no_automations,
                         )
                         if (onNewAutomationClick != null) {
                             Spacer(modifier = Modifier.height(16.dp))
@@ -133,7 +136,7 @@ fun DIYScreen(
                                     onNewAutomationClick()
                                 },
                             ) {
-                                Text(stringResource(R.string.action_new_automation))
+                                TranslatableText(R.string.action_new_automation)
                             }
                         }
                     }
@@ -173,6 +176,7 @@ fun DIYScreen(
                         onTest = {
                             viewModel.testAutomation(automation)
                         },
+                        onShare = { shareTarget = automation },
                         selectionMode = selectionMode,
                         selected = automation.id in selectedIds,
                         isOpen = automation.id == LocalOpenAutomationId.current,
@@ -219,8 +223,9 @@ fun DIYScreen(
                                     modifier = Modifier.padding(top = 16.dp),
                                     verticalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
-                                    Text(
-                                        text = stringResource(R.string.diy_selected_count, selected.size),
+                                    TranslatableText(
+                                        stringResId = R.string.diy_selected_count,
+                                        formatArgs = listOf(selected.size),
                                         style = MaterialTheme.typography.titleMedium,
                                         modifier = Modifier.padding(start = 16.dp),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -331,6 +336,10 @@ fun DIYScreen(
                     }
                 }
             }
+        }
+
+        shareTarget?.let { target ->
+            AutomationShareSheet(automation = target, onDismissRequest = { shareTarget = null })
         }
 
         if (showNewAutomationSheet) {

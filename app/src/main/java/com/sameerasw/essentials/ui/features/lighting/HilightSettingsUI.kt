@@ -57,9 +57,11 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.sameerasw.essentials.R
 import com.sameerasw.essentials.domain.controller.HilightController
 import com.sameerasw.essentials.domain.model.HilightEffect
+import com.sameerasw.essentials.domain.model.HilightFrames
 import com.sameerasw.essentials.domain.model.HilightPattern
 import com.sameerasw.essentials.domain.model.HilightProgressColorMode
 import com.sameerasw.essentials.domain.model.HilightProgressFrames
+import com.sameerasw.essentials.translation.TranslatableText
 import com.sameerasw.essentials.ui.components.sliders.ConfigSliderItem
 import com.sameerasw.essentials.ui.core.cards.IconToggleItem
 import com.sameerasw.essentials.ui.core.containers.RoundedCardContainer
@@ -68,6 +70,7 @@ import com.sameerasw.essentials.ui.core.pickers.SegmentedPicker
 import com.sameerasw.essentials.ui.core.sheets.HilightEffectSheet
 import com.sameerasw.essentials.ui.core.sheets.SingleAppSelectionSheet
 import com.sameerasw.essentials.ui.modifiers.highlight
+import com.sameerasw.essentials.utils.AppColorUtil
 import com.sameerasw.essentials.utils.DeviceUtils
 import com.sameerasw.essentials.utils.HapticUtil
 import com.sameerasw.essentials.utils.hardware.HilightLights
@@ -107,8 +110,8 @@ fun HilightSettingsUI(
         }
 
         RoundedCardContainer {
-            Text(
-                text = stringResource(R.string.hilight_hint),
+            TranslatableText(
+                stringResId = R.string.hilight_hint,
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(16.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -163,8 +166,8 @@ fun HilightNotificationsSettingsUI(
             )
         }
 
-        Text(
-            text = stringResource(R.string.hilight_apps_title),
+        TranslatableText(
+            stringResId = R.string.hilight_apps_title,
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(start = 16.dp),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -172,8 +175,8 @@ fun HilightNotificationsSettingsUI(
         RoundedCardContainer(spacing = 2.dp) {
             val apps = viewModel.hilightAppEffects.entries.sortedBy { it.key }
             if (apps.isEmpty()) {
-                Text(
-                    text = stringResource(R.string.hilight_no_apps),
+                TranslatableText(
+                    stringResId = R.string.hilight_no_apps,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier =
@@ -214,6 +217,8 @@ fun HilightNotificationsSettingsUI(
                 editingPackage = null
             },
             canTry = isHilightDevice,
+            patterns = HilightPattern.entries - HilightPattern.BATTERY,
+            appPackage = packageName,
         )
     }
 }
@@ -364,7 +369,7 @@ private fun HilightProgressSection(
             modifier = Modifier.size(20.dp),
         )
         Spacer(modifier = Modifier.size(8.dp))
-        Text(stringResource(R.string.hilight_try_it))
+        TranslatableText(R.string.hilight_try_it)
     }
 }
 
@@ -429,6 +434,11 @@ private fun HilightAppItem(
                     .getOrNull()
             }
     }
+    val dotColor by produceState(effect.color, packageName, effect.autoColor) {
+        if (effect.autoColor) {
+            AppColorUtil.resolveColor(context, packageName) { value = HilightEffect.appColorOr(it, effect.color) }
+        }
+    }
 
     Row(
         modifier =
@@ -470,16 +480,24 @@ private fun HilightAppItem(
                             Modifier
                                 .size(10.dp)
                                 .clip(CircleShape)
-                                .background(Color(effect.color)),
+                                .background(Color(dotColor)),
                     )
                 }
                 Text(
                     text =
-                        stringResource(
-                            R.string.hilight_app_effect_summary,
-                            stringResource(effect.pattern.title),
-                            (effect.durationMs / 1000).toInt(),
-                        ),
+                        if (effect.repeats > 0 && HilightFrames.cycleMs(effect.pattern, HilightEffect.DEFAULT_LED_COUNT) != null) {
+                            stringResource(
+                                R.string.hilight_app_effect_summary_repeats,
+                                stringResource(effect.pattern.title),
+                                effect.repeats,
+                            )
+                        } else {
+                            stringResource(
+                                R.string.hilight_app_effect_summary,
+                                stringResource(effect.pattern.title),
+                                (effect.durationMs / 1000).toInt(),
+                            )
+                        },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -524,8 +542,8 @@ private fun HilightAddAppItem(onClick: () -> Unit) {
             modifier = Modifier.size(24.dp),
             tint = MaterialTheme.colorScheme.primary,
         )
-        Text(
-            text = stringResource(R.string.hilight_add_app),
+        TranslatableText(
+            stringResId = R.string.hilight_add_app,
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.primary,
         )

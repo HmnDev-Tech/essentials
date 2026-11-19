@@ -1,5 +1,8 @@
 package com.sameerasw.essentials.island.ui
 
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.animation.animateColorAsState
 import com.sameerasw.essentials.island.ui.components.islandAccent
 
 import com.sameerasw.essentials.island.model.SideBubble
@@ -13,6 +16,11 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.res.stringResource
+import com.sameerasw.essentials.R
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.first
@@ -49,7 +57,7 @@ import androidx.compose.runtime.getValue
 import com.sameerasw.essentials.island.ui.components.LocalIslandBitmapFlat
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.material3.carousel.HorizontalMultiBrowseCarousel
+import androidx.compose.material3.carousel.HorizontalUncontainedCarousel
 import androidx.compose.material3.carousel.rememberCarouselState
 import kotlinx.coroutines.delay
 import androidx.compose.foundation.layout.PaddingValues
@@ -69,8 +77,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.sameerasw.essentials.island.model.StackIcon
 import com.sameerasw.essentials.island.model.QueueOverflow
+import kotlin.math.roundToInt
 
-private const val BUBBLE_MAX_MINIS = 3
 private const val PILL_MAX_ICONS = 5
 
 private class QueueEntry(
@@ -121,61 +129,8 @@ private fun QueueExitWatcher(entry: QueueEntry) {
 private val QueueEnter = scaleIn(IslandMotion.expressiveFastSpatial(), initialScale = 0.4f) + fadeIn(IslandMotion.expressiveFastEffects())
 private val QueueExit = scaleOut(IslandMotion.expressiveFastEffects(), targetScale = 0.6f) + fadeOut(IslandMotion.expressiveFastEffects())
 
-@Composable
-fun IslandStackBubble(
-    icons: List<StackIcon>,
-    size: Dp,
-    modifier: Modifier = Modifier,
-    outlineColor: Color? = null,
-    outlineThickness: Dp = 1.dp,
-    bond: LiquidBond? = null,
-) {
-    val shown = queueVisible(icons, BUBBLE_MAX_MINIS)
-    val count = shown.size
-    val iconSize = when (count) {
-        1 -> size * 0.62f
-        2 -> size * 0.42f
-        else -> size * 0.36f
-    }
-    val r = size * 0.19f
-    fun slot(i: Int): Pair<Dp, Dp> = when (count) {
-        1 -> 0.dp to 0.dp
-        2 -> listOf(-r to 0.dp, r to 0.dp)[i]
-        else -> listOf(0.dp to -r, -r to r * 0.7f, r to r * 0.7f)[i]
-    }
-
-    val liquid = rememberLiquidBody(LiquidSpec.Droplet, bond)
-    Box(
-        modifier = modifier
-            .liquid(liquid)
-            .size(size)
-            .clip(CircleShape)
-            .background(Color.Black)
-            .islandOutline(outlineColor, outlineThickness, CircleShape),
-        contentAlignment = Alignment.Center,
-    ) {
-        rememberQueueEntries(shown).forEach { entry ->
-            key(entry.icon.key) {
-                QueueExitWatcher(entry)
-                val held = remember { arrayOfNulls<Pair<Dp, Dp>>(1) }
-                val index = shown.indexOfFirst { it.key == entry.icon.key }
-                val target = if (index >= 0) slot(index).also { held[0] = it } else held[0] ?: (0.dp to 0.dp)
-                val x by animateDpAsState(target.first, IslandMotion.expressiveDefaultSpatial(), label = "bubbleX")
-                val y by animateDpAsState(target.second, IslandMotion.expressiveDefaultSpatial(), label = "bubbleY")
-                val s by animateDpAsState(iconSize, IslandMotion.expressiveDefaultSpatial(), label = "bubbleSize")
-                val miniLiquid = rememberLiquidBody(LiquidSpec.Droplet)
-                AnimatedVisibility(
-                    visibleState = entry.visibility,
-                    enter = QueueEnter,
-                    exit = QueueExit,
-                    modifier = Modifier.offset(x, y).liquid(miniLiquid),
-                ) {
-                    Box(Modifier.size(s), contentAlignment = Alignment.Center) { entry.icon.content(s) }
-                }
-            }
-        }
-    }
-}
+val LocalBubbleIconFraction = androidx.compose.runtime.compositionLocalOf { 0.72f }
+val LocalIslandCellSize = androidx.compose.runtime.compositionLocalOf { 24.dp }
 
 @Composable
 fun IslandQueueCount(
@@ -271,6 +226,17 @@ fun stackOverlapWidth(count: Int, size: Dp, maxIcons: Int = OVERLAP_MAX, overflo
     return size + size * OVERLAP_STEP * (count.coerceIn(1, maxIcons) - 1) + gap
 }
 
+fun overlapSlots(icons: List<StackIcon>, maxIcons: Int): Int =
+    if (maxIcons <= 0) 1 else (maxIcons - icons.take(maxIcons).count { it.widthFactor > 1f }).coerceAtLeast(if (icons.size > 1) 2 else 1)
+
+fun overlapOverflow(maxIcons: Int, overflow: QueueOverflow): QueueOverflow = if (maxIcons <= 0) QueueOverflow.None else overflow
+
+fun overlapMinFactor(icons: List<StackIcon>): Float =
+    (icons.firstOrNull()?.widthFactor ?: 1f).coerceAtLeast(1f) + if (icons.size > 1) OVERFLOW_STEP else 0f
+
+fun overlapExtraWidth(icons: List<StackIcon>, size: Dp, maxIcons: Int = OVERLAP_MAX, overflow: QueueOverflow = QueueOverflow.Number): Dp =
+    queueVisible(icons, overlapSlots(icons, maxIcons), overflow).fold(0.dp) { acc, icon -> acc + size * (icon.widthFactor - 1f).coerceAtLeast(0f) }
+
 @Composable
 fun IslandStackOverlap(
     icons: List<StackIcon>,
@@ -281,9 +247,20 @@ fun IslandStackOverlap(
     bond: LiquidBond? = null,
     maxIcons: Int = OVERLAP_MAX,
     overflow: QueueOverflow = QueueOverflow.Number,
+    spread: () -> Float = { 1f },
+    gatherToEnd: Boolean = true,
+    side: (() -> Float)? = null,
+    sideTarget: Boolean = false,
+    travel: () -> Float = { 0f },
 ) {
-    val shown = queueVisible(icons, maxIcons, overflow)
-    val width by animateDpAsState(stackOverlapWidth(icons.size, size, maxIcons, overflow), IslandMotion.expressiveDefaultSpatial(), label = "overlapWidth")
+    val slots = overlapSlots(icons, maxIcons)
+    val overflow = overlapOverflow(maxIcons, overflow)
+    val shown = queueVisible(icons, slots, overflow)
+    val width by animateDpAsState(
+        stackOverlapWidth(icons.size, size, slots, overflow) + overlapExtraWidth(icons, size, maxIcons, overflow),
+        IslandMotion.expressiveSlowSpatial(),
+        label = "overlapWidth",
+    )
     val liquid = rememberLiquidBody(LiquidSpec.Droplet, bond)
     val field = remember { LiquidField() }
     field.reach = with(LocalDensity.current) { size.toPx() } * 0.3f
@@ -298,18 +275,20 @@ fun IslandStackOverlap(
                     val held = remember { arrayOf(0.dp) }
                     val index = order.indexOfFirst { it.key == entry.icon.key }
                     val present = index >= 0
-                    val counterGap = if (icons.size > maxIcons && overflow != QueueOverflow.None && entry.icon.key != OVERFLOW_KEY) size * (OVERFLOW_STEP - OVERLAP_STEP) else 0.dp
-                    val dotMode = icons.size > maxIcons && overflow == QueueOverflow.Dot
+                    val counterGap = if (icons.size > slots && overflow != QueueOverflow.None && entry.icon.key != OVERFLOW_KEY) size * (OVERFLOW_STEP - OVERLAP_STEP) else 0.dp
+                    val dotMode = icons.size > slots && overflow == QueueOverflow.Dot
                     val isDot = dotMode && entry.icon.key == OVERFLOW_KEY
                     val boxSize = if (isDot) dotBox(size) else size
+                    val boxWidth = boxSize * entry.icon.widthFactor.coerceAtLeast(1f)
+                    val widePrefix = if (present) order.take(index).fold(0.dp) { acc, icon -> acc + size * (icon.widthFactor - 1f).coerceAtLeast(0f) } else 0.dp
                     val target = if (present) {
-                        (if (dotMode) (if (isDot) 0.dp else dotBase(size) + step * (index - 1)) else step * index + counterGap).also { held[0] = it }
+                        ((if (dotMode) (if (isDot) 0.dp else dotBase(size) + step * (index - 1)) else step * index + counterGap) + widePrefix).also { held[0] = it }
                     } else {
                         step * (order.size - 1) / 2
                     }
                     val spawn = remember { if (entry.visibility.currentState) target else step * (index - 1).coerceAtLeast(0) }
                     val x = remember { Animatable(spawn, Dp.VectorConverter) }
-                    LaunchedEffect(target) { x.animateTo(target, IslandMotion.expressiveDefaultSpatial()) }
+                    LaunchedEffect(target) { x.animateTo(target, IslandMotion.expressiveSlowSpatial()) }
                     val presence = animateFloatAsState(if (present) 1f else 0f, IslandMotion.expressiveFastEffects(), label = "overlapPresence")
                     val entryBond = remember { LiquidBond("overlap_${entry.icon.key}", presence = { presence.value }) }
                     val entryLiquid = rememberLiquidBody(LiquidSpec.Droplet, entryBond)
@@ -318,14 +297,36 @@ fun IslandStackOverlap(
                         enter = QueueEnter,
                         exit = QueueExit,
                         modifier = Modifier
-                            .offset { IntOffset(x.value.roundToPx(), if (isDot) ((size - boxSize) / 2).roundToPx() else 0) }
+                            .offset {
+                                val s = spread().coerceIn(0f, 1f)
+                                val endAnchor = (width - boxWidth).toPx()
+                                val px = if (side == null) {
+                                    val anchor = if (gatherToEnd) endAnchor else 0f
+                                    anchor + (x.value.toPx() - anchor) * s
+                                } else {
+                                    val global = side()
+                                    val rank = (order.size - 1 - index).coerceAtLeast(0)
+                                    val lag = SIDE_STAGGER * rank
+                                    val span = 1f + SIDE_STAGGER * (order.size - 1).coerceAtLeast(0)
+                                    val local = if (sideTarget) {
+                                        (global * span - lag).coerceIn(0f, 1f)
+                                    } else {
+                                        1f - ((1f - global) * span - lag).coerceIn(0f, 1f)
+                                    }
+                                    val anchor = endAnchor * (1f - local)
+                                    val leftX = x.value.toPx()
+                                    val laid = leftX + (endAnchor - leftX - leftX) * local
+                                    anchor + (laid - anchor) * s + travel() * (local - global)
+                                }
+                                IntOffset(px.roundToInt(), if (isDot) ((size - boxSize) / 2).roundToPx() else 0)
+                            }
                             .liquid(entryLiquid),
                     ) {
                         val ringColor = islandAccent()
                         val ringAlpha by animateFloatAsState(if (entry.icon.highlight) 1f else 0f, IslandMotion.expressiveDefaultEffects(), label = "overlapRing")
                         Box(
                             Modifier
-                                .size(boxSize)
+                                .size(boxWidth, boxSize)
                                 .clip(CircleShape)
                                 .background(Color.Black)
                                 .islandOutline(outlineColor, outlineThickness, CircleShape)
@@ -340,13 +341,198 @@ fun IslandStackOverlap(
                                     drawContent()
                                     if (ringAlpha > 0f) {
                                         val stroke = 2.5.dp.toPx()
-                                        drawCircle(ringColor.copy(alpha = ringAlpha), radius = this.size.minDimension / 2f - stroke / 2f, style = Stroke(stroke))
+                                        drawRoundRect(
+                                            ringColor.copy(alpha = ringAlpha),
+                                            topLeft = androidx.compose.ui.geometry.Offset(stroke / 2f, stroke / 2f),
+                                            size = androidx.compose.ui.geometry.Size(this.size.width - stroke, this.size.height - stroke),
+                                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(this.size.height / 2f),
+                                            style = Stroke(stroke),
+                                        )
                                     }
                                 },
                             contentAlignment = Alignment.Center,
                         ) {
-                            val iconSize = boxSize * 0.72f
-                            Box(Modifier.size(iconSize), contentAlignment = Alignment.Center) { entry.icon.content(iconSize) }
+                            val iconSize = if (entry.icon.fill) boxSize else boxSize * LocalBubbleIconFraction.current
+                            val contentWidth = if (entry.icon.fill) boxWidth else iconSize
+                            Box(Modifier.size(contentWidth, iconSize), contentAlignment = Alignment.Center) { entry.icon.content(iconSize) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private enum class ClearMode { Off, Actions, Snooze }
+
+private fun formatSnooze(minutes: Int): String = when {
+    minutes >= 60 && minutes % 60 == 0 -> "${minutes / 60}h"
+    minutes >= 60 -> "${minutes / 60}h ${minutes % 60}m"
+    else -> "${minutes}m"
+}
+
+private fun readSnoozeOptions(context: android.content.Context): Pair<Int, List<Int>> {
+    var default = 60
+    var options = listOf(15, 30, 60, 120)
+    val raw = runCatching { android.provider.Settings.Global.getString(context.contentResolver, "notification_snooze_options") }.getOrNull().orEmpty()
+    raw.split(",").forEach { pair ->
+        val parts = pair.split("=", limit = 2)
+        if (parts.size != 2) return@forEach
+        when (parts[0].trim()) {
+            "default" -> default = parts[1].trim().toIntOrNull() ?: default
+            "options_array" -> options = parts[1].split(":").mapNotNull { it.trim().toIntOrNull() }.ifEmpty { options }
+        }
+    }
+    return default to options
+}
+
+private fun <S> androidx.compose.animation.AnimatedContentTransitionScope<S>.clearTransition(): androidx.compose.animation.ContentTransform =
+    (fadeIn(IslandMotion.expressiveDefaultEffects()) togetherWith fadeOut(IslandMotion.expressiveFastEffects()))
+        .using(androidx.compose.animation.SizeTransform(clip = false) { _, _ -> androidx.compose.animation.core.snap() })
+
+@Composable
+private fun ClearActions(
+    snoozing: Boolean,
+    height: Dp,
+    itemHeight: Dp,
+    ring: Color,
+    container: Color,
+    outlineColor: Color?,
+    outlineThickness: Dp,
+    canSnooze: Boolean,
+    onClear: () -> Unit,
+    onCancel: () -> Unit,
+    onOpenSnooze: () -> Unit,
+    onSnooze: (Int) -> Unit,
+) {
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    val field = remember { LiquidField() }
+    field.reach = with(density) { height.toPx() } * 0.3f
+    val leftLiquid = rememberLiquidBody(LiquidSpec.Droplet, remember { LiquidBond("clear_left") }, field)
+    val rightLiquid = rememberLiquidBody(LiquidSpec.Droplet, remember { LiquidBond("clear_right") }, field)
+    val (defaultMinutes, options) = remember { readSnoozeOptions(context) }
+    val tint = ring.copy(alpha = 0.16f)
+    val snoozeState = rememberCarouselState { options.size }
+    Box(Modifier.height(height)) {
+        LiquidBridges(field, container, Modifier.matchParentSize())
+        Row(
+            Modifier.height(height),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier
+                    .liquid(leftLiquid)
+                    .height(height)
+                    .clip(CircleShape)
+                    .background(container)
+                    .background(tint)
+                    .islandOutline(outlineColor, outlineThickness, CircleShape)
+                    .animateContentSize(IslandMotion.compactSize)
+                    .pointerInput(snoozing) {
+                        detectTapGestures {
+                            IslandHaptics.button(context)
+                            if (snoozing) onCancel() else onClear()
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                AnimatedContent(targetState = snoozing, transitionSpec = { clearTransition() }, label = "clearLeft") { snooze ->
+                    if (snooze) {
+                        Box(Modifier.size(height), contentAlignment = Alignment.Center) {
+                            androidx.compose.material3.Icon(
+                                painter = androidx.compose.ui.res.painterResource(R.drawable.rounded_close_24),
+                                contentDescription = null,
+                                tint = ring,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    } else {
+                        Row(
+                            Modifier.height(height).padding(horizontal = 18.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            androidx.compose.material3.Icon(
+                                painter = androidx.compose.ui.res.painterResource(R.drawable.rounded_delete_24),
+                                contentDescription = null,
+                                tint = ring,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Text(
+                                text = stringResource(R.string.label_clear_all),
+                                color = ring,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                }
+            }
+            if (canSnooze) {
+                Box(
+                    Modifier
+                        .liquid(rightLiquid)
+                        .height(height)
+                        .clip(CircleShape)
+                        .background(container)
+                        .background(tint)
+                        .islandOutline(outlineColor, outlineThickness, CircleShape)
+                        .animateContentSize(IslandMotion.compactSize)
+                        .pointerInput(snoozing) {
+                            if (!snoozing) detectTapGestures { IslandHaptics.button(context); onOpenSnooze() }
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    AnimatedContent(targetState = snoozing, transitionSpec = { clearTransition() }, label = "clearRight") { snooze ->
+                        if (snooze) {
+                            val optionWidth = 56.dp
+                            val slots = options.size.coerceAtMost(3)
+                            HorizontalUncontainedCarousel(
+                                state = snoozeState,
+                                itemWidth = optionWidth,
+                                itemSpacing = 2.dp,
+                                contentPadding = PaddingValues(horizontal = 6.dp),
+                                modifier = Modifier
+                                    .width(optionWidth * slots + 2.dp * (slots - 1).coerceAtLeast(0) + 12.dp)
+                                    .height(itemHeight),
+                            ) { index ->
+                                val minutes = options[index]
+                                val shape = RoundedCornerShape(14.dp)
+                                Box(
+                                    Modifier
+                                        .fillMaxSize()
+                                        .maskClip(shape)
+                                        .maskBorder(BorderStroke(2.dp, ring.copy(alpha = if (minutes == defaultMinutes) 1f else 0f)), shape)
+                                        .background(Color.White.copy(alpha = 0.08f))
+                                        .pointerInput(minutes) {
+                                            detectTapGestures {
+                                                IslandHaptics.button(context)
+                                                onSnooze(minutes)
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        text = formatSnooze(minutes),
+                                        color = ring,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                    )
+                                }
+                            }
+                        } else {
+                            Box(Modifier.size(height), contentAlignment = Alignment.Center) {
+                                androidx.compose.material3.Icon(
+                                    painter = androidx.compose.ui.res.painterResource(R.drawable.rounded_notifications_paused_24),
+                                    contentDescription = null,
+                                    tint = ring,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
                         }
                     }
                 }
@@ -365,9 +551,35 @@ fun IslandStackPill(
     outlineColor: Color? = null,
     outlineThickness: Dp = 1.dp,
     bond: LiquidBond? = null,
+    accent: Color? = null,
+    reversed: Boolean = false,
+    onClearAll: (() -> Unit)? = null,
+    onSnoozeAll: ((Int) -> Unit)? = null,
     onInteraction: () -> Unit = {},
 ) {
-    val ring = islandAccent()
+    val ring by animateColorAsState(accent ?: islandAccent(), label = "stackRing")
+    var mode by remember { mutableStateOf(ClearMode.Off) }
+    val keysSignature = icons.joinToString("|") { it.key }
+    LaunchedEffect(selectedKey, keysSignature, interactive) { mode = ClearMode.Off }
+    var touching by remember { mutableStateOf(false) }
+    var activity by remember { mutableIntStateOf(0) }
+    LaunchedEffect(mode) {
+        while (mode != ClearMode.Off) {
+            onInteraction()
+            delay(500)
+        }
+    }
+    LaunchedEffect(mode, touching, activity) {
+        if (mode != ClearMode.Off && !touching) {
+            delay(8000)
+            mode = ClearMode.Off
+        }
+    }
+    val container by animateColorAsState(
+        if (accent != null) androidx.compose.ui.graphics.lerp(Color.Black, accent, 0.22f) else Color.Black,
+        label = "stackContainer",
+    )
+    val pillAlpha by animateFloatAsState(if (mode == ClearMode.Off) 1f else 0f, IslandMotion.expressiveFastEffects(), label = "pillAlpha")
     val liquid = rememberLiquidBody(bond = bond)
     val itemWidth = iconSize + 8.dp
     val spacing = 2.dp
@@ -404,25 +616,75 @@ fun IslandStackPill(
             }
         }
     }
+    val startClear: (() -> Unit)? = if (interactive && onClearAll != null) {
+        { IslandHaptics.button(hapticContext); onInteraction(); mode = ClearMode.Actions }
+    } else {
+        null
+    }
     val visibleSlots = icons.size.coerceAtMost(PILL_MAX_ICONS)
-    val carouselWidth by animateDpAsState((itemWidth + spacing) * visibleSlots + 12.dp, IslandMotion.expressiveDefaultSpatial(), label = "pillWidth")
+    val carouselWidth by animateDpAsState(itemWidth * visibleSlots + spacing * (visibleSlots - 1).coerceAtLeast(0) + 12.dp, IslandMotion.expressiveDefaultSpatial(), label = "pillWidth")
     Box(
         modifier = modifier
             .liquid(liquid)
-            .clip(CircleShape)
-            .background(Color.Black)
-            .islandOutline(outlineColor, outlineThickness, CircleShape)
-            .animateContentSize(IslandMotion.compactSize)
-            .padding(vertical = 5.dp),
+            .background(container.copy(alpha = container.alpha * pillAlpha), CircleShape)
+            .islandOutline(outlineColor?.let { it.copy(alpha = it.alpha * pillAlpha) }, outlineThickness, CircleShape)
+            .then(
+                if (startClear != null) Modifier.pointerInput(Unit) { detectTapGestures(onLongPress = { startClear() }) } else Modifier,
+            )
+            .animateContentSize(IslandMotion.compactSize),
     ) {
-        HorizontalMultiBrowseCarousel(
+        AnimatedContent(
+            targetState = mode != ClearMode.Off,
+            transitionSpec = { clearTransition() },
+            label = "stackClearAll",
+        ) { clearing ->
+        if (clearing) {
+            Box(
+                Modifier.pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                            val down = event.changes.any { it.pressed }
+                            if (touching && !down) activity++
+                            touching = down
+                        }
+                    }
+                },
+            ) {
+            ClearActions(
+                snoozing = mode == ClearMode.Snooze,
+                height = itemWidth + 10.dp,
+                itemHeight = itemWidth,
+                ring = ring,
+                container = container,
+                outlineColor = outlineColor,
+                outlineThickness = outlineThickness,
+                canSnooze = onSnoozeAll != null,
+                onClear = {
+                    mode = ClearMode.Off
+                    onClearAll?.invoke()
+                },
+                onCancel = { mode = ClearMode.Off },
+                onOpenSnooze = {
+                    onInteraction()
+                    mode = ClearMode.Snooze
+                },
+                onSnooze = { minutes ->
+                    mode = ClearMode.Off
+                    onSnoozeAll?.invoke(minutes)
+                },
+            )
+            }
+        } else {
+        Box(Modifier.clip(CircleShape)) {
+        CompositionLocalProvider(LocalLayoutDirection provides if (reversed) LayoutDirection.Rtl else LayoutDirection.Ltr) {
+        HorizontalUncontainedCarousel(
             state = carouselState,
-            preferredItemWidth = itemWidth,
-            minSmallItemWidth = 10.dp,
-            maxSmallItemWidth = itemWidth,
+            itemWidth = itemWidth,
             itemSpacing = spacing,
             contentPadding = PaddingValues(horizontal = 6.dp),
             modifier = Modifier
+                .padding(vertical = 5.dp)
                 .width(carouselWidth)
                 .height(itemWidth),
         ) { index ->
@@ -437,17 +699,30 @@ fun IslandStackPill(
                     .background(Color.White.copy(alpha = 0.08f))
                     .then(
                         if (interactive && icon.onSelect != null) {
-                            Modifier.pointerInput(icon.key) { detectTapGestures { IslandHaptics.button(hapticContext); onInteraction(); icon.onSelect.invoke() } }
+                            Modifier.pointerInput(icon.key) {
+                                detectTapGestures(
+                                    onLongPress = startClear?.let { start -> { _ -> start() } },
+                                    onTap = { IslandHaptics.button(hapticContext); onInteraction(); icon.onSelect.invoke() },
+                                )
+                            }
                         } else {
                             Modifier
                         },
                     ),
                 contentAlignment = Alignment.Center,
             ) {
-                CompositionLocalProvider(LocalIslandBitmapFlat provides true) {
+                CompositionLocalProvider(
+                    LocalIslandBitmapFlat provides true,
+                    LocalIslandIconColor provides if (accent != null) ring else LocalIslandIconColor.current,
+                    LocalLayoutDirection provides LayoutDirection.Ltr,
+                ) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { icon.content(itemWidth) }
                 }
             }
+        }
+        }
+        }
+        }
         }
     }
 }
@@ -458,11 +733,15 @@ fun IslandSideBubble(
     bubbleFor: (String) -> SideBubble?,
     size: Dp,
     modifier: Modifier = Modifier,
-    style: QueueStyle = QueueStyle.Stack,
     outlineColor: Color? = null,
     outlineThickness: Dp = 1.dp,
     maxIcons: Int = OVERLAP_MAX,
     overflow: QueueOverflow = QueueOverflow.Number,
+    spread: () -> Float = { 1f },
+    gatherToEnd: Boolean = true,
+    side: (() -> Float)? = null,
+    sideTarget: Boolean = false,
+    travel: () -> Float = { 0f },
 ) {
     Box(modifier.height(size)) {
         AnimatedContent(
@@ -484,25 +763,38 @@ fun IslandSideBubble(
                             .background(Color.Black)
                             .islandOutline(outlineColor, outlineThickness, CircleShape),
                         contentAlignment = Alignment.Center,
-                    ) { content(size * 0.72f) }
-                } else if (style == QueueStyle.Overlap) {
-                    IslandStackOverlap(bubble.icons, size, outlineColor = outlineColor, outlineThickness = outlineThickness, maxIcons = maxIcons, overflow = overflow)
+                    ) { content(size * LocalBubbleIconFraction.current) }
                 } else {
-                    IslandStackBubble(bubble.icons, size, outlineColor = outlineColor, outlineThickness = outlineThickness)
+                    IslandStackOverlap(
+                        bubble.icons,
+                        size,
+                        outlineColor = outlineColor,
+                        outlineThickness = outlineThickness,
+                        maxIcons = maxIcons,
+                        overflow = overflow,
+                        spread = spread,
+                        gatherToEnd = gatherToEnd,
+                        side = side,
+                        sideTarget = sideTarget,
+                        travel = travel,
+                    )
                 }
             }
         }
     }
 }
 
-fun inlineBubbleCell(bubble: SideBubble, overlap: Boolean): CompactCell = CompactCell("bubble.inline") {
+fun inlineBubbleCell(bubble: SideBubble): CompactCell = CompactCell("bubble.inline") {
     val tap = Modifier.pointerInput(bubble) { detectTapGestures { bubble.onOpen() } }
     val content = bubble.content
-    when {
-        content != null -> Box(tap.size(22.dp).clip(CircleShape).background(Color.Black), contentAlignment = Alignment.Center) {
-            content(16.dp)
+    val cell = LocalIslandCellSize.current
+    if (content != null) {
+        Box(tap.size(cell * 0.92f).clip(CircleShape).background(Color.Black), contentAlignment = Alignment.Center) {
+            content(cell * 0.67f)
         }
-        overlap -> IslandStackOverlap(bubble.icons, 22.dp, modifier = tap)
-        else -> IslandStackBubble(bubble.icons, 26.dp, modifier = tap)
+    } else {
+        IslandStackOverlap(bubble.icons, cell * 0.92f, modifier = tap)
     }
 }
+
+private const val SIDE_STAGGER = 0.18f

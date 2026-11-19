@@ -33,7 +33,10 @@ import com.sameerasw.essentials.domain.model.NotificationLightingColorMode
 import com.sameerasw.essentials.domain.model.NotificationLightingSide
 import com.sameerasw.essentials.domain.model.NotificationLightingStyle
 import com.sameerasw.essentials.domain.model.NotificationLightingSweepPosition
+import com.sameerasw.essentials.domain.model.PowerChoice
+import com.sameerasw.essentials.domain.model.RemapSlot
 import com.sameerasw.essentials.domain.model.ScaleAnimationsProfile
+import com.sameerasw.essentials.domain.model.Snippet
 import com.sameerasw.essentials.domain.model.SystemShortcutsState
 import com.sameerasw.essentials.domain.model.TrackedRepo
 import com.sameerasw.essentials.domain.model.github.GitHubUser
@@ -56,6 +59,8 @@ class SettingsRepository(
         migrateUsageAccessKey()
         migrateRemapStringToAction()
         migratePixelSearchbarType()
+        migrateDebugUiMarginOverlayReset()
+        migrateStatusBarAwareWidthReset()
     }
 
     private fun migrateUsageAccessKey() {
@@ -102,6 +107,24 @@ class SettingsRepository(
         }
 
         putBoolean(KEY_BUTTON_REMAP_MIGRATION_DONE, true)
+    }
+
+    private fun migrateStatusBarAwareWidthReset() {
+        if (prefs.getBoolean(KEY_ISLAND_STATUSBAR_AWARE_WIDTH_RESET_V1, false)) return
+        val editor = prefs.edit()
+        prefs.all.keys
+            .filter { it == KEY_ISLAND_STATUSBAR_AWARE_WIDTH || it.startsWith("$KEY_ISLAND_STATUSBAR_AWARE_WIDTH@") }
+            .forEach { editor.putBoolean(it, false) }
+        editor.putBoolean(KEY_ISLAND_STATUSBAR_AWARE_WIDTH_RESET_V1, true).apply()
+    }
+
+    private fun migrateDebugUiMarginOverlayReset() {
+        if (!prefs.getBoolean(KEY_DEBUG_UI_MARGIN_OVERLAY_RESET_V1, false)) {
+            prefs.edit()
+                .putBoolean(KEY_DEBUG_UI_MARGIN_OVERLAY, false)
+                .putBoolean(KEY_DEBUG_UI_MARGIN_OVERLAY_RESET_V1, true)
+                .apply()
+        }
     }
 
     private fun migratePixelSearchbarType() {
@@ -154,8 +177,30 @@ class SettingsRepository(
         }
     }
 
+    fun getPowerChoice(slot: RemapSlot): PowerChoice {
+        val defaultChoice = slot.defaultChoice ?: PowerChoice.ASSISTANT
+        val key = slot.choicePrefKey ?: return defaultChoice
+        val value = prefs.getString(key, null) ?: return defaultChoice
+        return try {
+            PowerChoice.valueOf(value)
+        } catch (_: IllegalArgumentException) {
+            defaultChoice
+        }
+    }
+
+    fun setPowerChoice(
+        slot: RemapSlot,
+        choice: PowerChoice,
+    ) {
+        val key = slot.choicePrefKey ?: return
+        prefs.edit().putString(key, choice.name).apply()
+    }
+
     companion object {
         const val PREFS_NAME = "essentials_prefs"
+
+        @Volatile
+        private var cachedSnippets: List<Snippet>? = null
 
         // Keys
         const val KEY_DEBUGGING_TILE_TAP_ACTION = "debugging_tile_tap_action"
@@ -249,6 +294,13 @@ class SettingsRepository(
         const val KEY_BUTTON_REMAP_VOL_DOWN_ACTION = "button_remap_vol_down_action" // Legacy
         const val KEY_BUTTON_REMAP_VOL_UP_ACTION_ON = "button_remap_vol_up_action_on"
         const val KEY_BUTTON_REMAP_VOL_DOWN_ACTION_ON = "button_remap_vol_down_action_on"
+        const val KEY_BUTTON_REMAP_POWER_HOLD_ACTION_OFF = "button_remap_power_hold_action_off"
+        const val KEY_BUTTON_REMAP_POWER_HOLD_ACTION_ON = "button_remap_power_hold_action_on"
+        const val KEY_BUTTON_REMAP_POWER_HOLD_CHOICE_OFF = "button_remap_power_hold_choice_off"
+        const val KEY_BUTTON_REMAP_POWER_HOLD_CHOICE_ON = "button_remap_power_hold_choice_on"
+        const val KEY_BUTTON_REMAP_POWER_OVERRIDDEN = "button_remap_power_overridden"
+        const val KEY_BUTTON_REMAP_POWER_ORIGINAL = "button_remap_power_original"
+        const val KEY_BUTTON_REMAP_POWER_CAMERA_FLIP = "button_remap_power_camera_flip"
         const val KEY_BUTTON_REMAP_HAPTIC_TYPE = "button_remap_haptic_type"
         const val KEY_FLASHLIGHT_HAPTIC_TYPE = "flashlight_haptic_type" // Legacy
         const val KEY_BUTTON_REMAP_MIGRATION_DONE = "button_remap_action_migration_done"
@@ -355,6 +407,9 @@ class SettingsRepository(
         const val KEY_KEYBOARD_CLIPBOARD_ENABLED = "keyboard_clipboard_enabled"
         const val KEY_KEYBOARD_LONG_PRESS_SYMBOLS = "keyboard_long_press_symbols"
         const val KEY_KEYBOARD_ACCENTED_CHARACTERS = "keyboard_accented_characters"
+        const val KEY_TEXT_SNIPPETS_ENABLED = "text_snippets_enabled"
+        const val KEY_TEXT_SNIPPETS_PREFIX = "text_snippets_prefix"
+        const val KEY_TEXT_SNIPPETS_DATA = "text_snippets_data"
 
         // Essentials-AirSync Bridge
         const val KEY_AIRSYNC_CONNECTION_ENABLED = "airsync_connection_enabled"
@@ -512,6 +567,7 @@ class SettingsRepository(
         const val KEY_DUO_HIDE_WHEN_SCREEN_OFF_ONLY_IDLE = "duo_hide_when_screen_off_only_idle"
         const val KEY_DUO_HIDE_WHEN_LOCKED = "duo_hide_when_locked"
         const val KEY_DUO_USE_MATERIAL_YOU = "duo_use_material_you"
+        const val KEY_DUO_MATCH_ISLAND_COLORS = "duo_match_island_colors"
         const val KEY_DUO_CUSTOM_COLOR = "duo_custom_color"
         const val KEY_DUO_TAP_ACTION = "duo_tap_action"
         const val KEY_DUO_DOUBLE_TAP_ACTION = "duo_double_tap_action"
@@ -529,6 +585,7 @@ class SettingsRepository(
         const val KEY_ISLAND_CAMERA_SIZE = "island_camera_size"
         const val KEY_ISLAND_MAX_WIDTH = "island_max_width"
         const val KEY_ISLAND_CUTOUT_GAP = "island_cutout_gap"
+        const val KEY_ISLAND_PADDING_AROUND = "island_padding_around"
         const val KEY_ISLAND_SUPPRESS_SYSTEM_HEADS_UP = "island_suppress_system_heads_up"
         const val KEY_ISLAND_DYNAMIC_HIDE_STATUS_BAR = "island_dynamic_hide_status_bar"
         const val KEY_ISLAND_COMPACT_HIDE_STATUS_BAR = "island_compact_hide_status_bar"
@@ -539,6 +596,9 @@ class SettingsRepository(
         const val ISLAND_HIDE_ICON_CLOCK = "clock"
         const val KEY_ISLAND_HIDE_WHEN_SCREEN_OFF = "island_hide_when_screen_off"
         const val KEY_ISLAND_SHOW_WHEN = "island_show_when"
+        const val KEY_ISLAND_DISMISS_DIRECTION = "island_dismiss_direction"
+        const val ISLAND_DISMISS_HORIZONTAL = "horizontal"
+        const val ISLAND_DISMISS_DOWN = "down"
         const val ISLAND_SHOW_WHEN_UNLOCKED = "unlocked"
         const val ISLAND_SHOW_WHEN_SCREEN_ON = "screen_on"
         const val ISLAND_SHOW_WHEN_ALWAYS = "always"
@@ -547,14 +607,29 @@ class SettingsRepository(
         const val KEY_ISLAND_NOTIF_CONCEAL_CHAT_PICTURES = "island_notif_conceal_chat_pictures"
         const val KEY_ISLAND_CALENDAR_HIDE_LOCKED = "island_calendar_hide_locked"
         const val KEY_ISLAND_CALENDAR_COMPACT_TIME = "island_calendar_compact_time"
+        const val KEY_ISLAND_CALENDAR_ICON_ONLY = "island_calendar_icon_only"
+        const val KEY_ISLAND_CALENDAR_HIDE_NOW = "island_calendar_hide_now"
+        const val KEY_ISLAND_CALENDAR_SHOW_ONGOING = "island_calendar_show_ongoing"
+        const val KEY_ISLAND_CALENDAR_HIDDEN_EVENTS = "island_calendar_hidden_events"
         const val KEY_ISLAND_TIME_HIDE_LOCKED = "island_time_hide_locked"
         const val KEY_ISLAND_BATTERY_HIDE_LOCKED = "island_battery_hide_locked"
         const val KEY_ISLAND_TIMEOUT_MS = "island_timeout_ms"
+        const val KEY_ISLAND_TIMEOUT_AFTER_MARQUEE = "island_timeout_after_marquee"
         const val KEY_ISLAND_SHOW_GLOW = "island_show_glow"
+        const val KEY_ISLAND_GLOW_INTENSITY = "island_glow_intensity"
+        const val KEY_ISLAND_GLOW_SIZE = "island_glow_size"
+        const val KEY_ISLAND_GLOW_RIM = "island_glow_rim"
+        const val KEY_ISLAND_GLOW_DYNAMIC = "island_glow_dynamic"
+        const val KEY_ISLAND_GLOW_COLOR = "island_glow_color"
+        const val KEY_ISLAND_EXPANDED_DARK_NOTICE_DISMISSED = "island_expanded_dark_notice_dismissed"
+        const val ISLAND_GLOW_DEFAULT_COLOR = "#FFFFFF"
+        const val KEY_ISLAND_PREFER_STILL = "island_prefer_still"
+        const val KEY_ISLAND_NOTIF_THEMED_BUBBLE = "island_notif_themed_bubble"
         const val KEY_ISLAND_EXPANDED_WIDTH = "island_expanded_width"
         const val KEY_ISLAND_EXPANDED_ROUNDNESS = "island_expanded_roundness"
         const val KEY_ISLAND_EXPANDED_PADDING = "island_expanded_padding"
         const val KEY_ISLAND_EXPANDED_TOP_PADDING = "island_expanded_top_padding"
+        const val KEY_ISLAND_EXPANDED_OFFSET_Y = "island_expanded_offset_y"
         const val KEY_ISLAND_EXPANDED_BOTTOM_PADDING = "island_expanded_bottom_padding"
         const val KEY_ISLAND_EXPANDED_TIMEOUT_MS = "island_expanded_timeout_ms"
         const val KEY_ISLAND_CATCH_UP_ENABLED = "island_catch_up_enabled"
@@ -578,6 +653,7 @@ class SettingsRepository(
         const val KEY_ISLAND_TIME_PERIOD = "island_time_period"
         const val KEY_ISLAND_TIME_LEADING_ZERO = "island_time_leading_zero"
         const val KEY_ISLAND_TIME_DAY_SUFFIX = "island_time_day_suffix"
+        const val KEY_ISLAND_TIME_TAP_OPENS_CLOCK = "island_time_tap_opens_clock"
         const val ISLAND_TIME_FORMAT_SYSTEM = "system"
         const val ISLAND_TIME_FORMAT_12H = "12h"
         const val ISLAND_TIME_FORMAT_24H = "24h"
@@ -601,9 +677,12 @@ class SettingsRepository(
         const val KEY_ISLAND_BATTERY_PEEK_ALERTS = "island_battery_peek_alerts"
         const val KEY_ISLAND_DEVICES_BATTERY_ONLY_LOW = "island_devices_battery_only_low"
         const val KEY_ISLAND_EXPANDED_SCALE = "island_expanded_scale"
+        const val KEY_ISLAND_NOTIF_MAX_HEIGHT = "island_notif_max_height"
+        const val KEY_ISLAND_CALENDAR_MAX_HEIGHT = "island_calendar_max_height"
         const val KEY_ISLAND_FONT_SCALE = "island_font_scale"
         const val KEY_ISLAND_ANIMATION_SPEED = "island_animation_speed"
         const val KEY_ISLAND_HIDE_IN_OWNER_APP = "island_hide_in_owner_app"
+        const val KEY_ISLAND_HIDE_MEDIA_IN_OWNER_APP = "island_hide_media_in_owner_app"
         const val KEY_ISLAND_HIDE_ON_SHADE = "island_hide_on_shade"
         const val KEY_ISLAND_KEEP_ON_LANDSCAPE = "island_keep_on_landscape"
         const val KEY_ISLAND_KEEP_IN_FULLSCREEN = "island_keep_in_fullscreen"
@@ -611,10 +690,24 @@ class SettingsRepository(
         const val KEY_ISLAND_LANDSCAPE_TOP_SPACING = "island_landscape_top_spacing"
         const val KEY_ISLAND_BOND_EDGE = "island_bond_edge"
         const val KEY_ISLAND_BALANCE_COMPACT = "island_balance_compact"
+        const val KEY_ISLAND_PERSISTENT_ORDER = "island_persistent_order"
+        const val KEY_ISLAND_NEURAL_EXPRESSIVE = "island_neural_expressive"
+        const val KEY_ISLAND_NEURAL_EXPRESSIVE_ALWAYS = "island_neural_expressive_always"
+        const val KEY_ISLAND_TRANSPARENCY = "island_transparency"
+        const val KEY_ISLAND_TRANSPARENCY_INTENSITY = "island_transparency_intensity"
+        const val KEY_ISLAND_BACKDROP_BLUR = "island_backdrop_blur"
+        const val KEY_ISLAND_BACKDROP_BLUR_RADIUS = "island_backdrop_blur_radius"
+        const val KEY_ISLAND_PROGRESSIVE_BLUR = "island_progressive_blur"
+        const val KEY_ISLAND_STATUSBAR_AWARE_WIDTH = "island_statusbar_aware_width"
+        const val KEY_ISLAND_STATUSBAR_AWARE_WIDTH_RESET_V1 = "island_statusbar_aware_width_reset_v1"
+        const val KEY_DEBUG_UI_MARGIN_OVERLAY = "debug_ui_margin_overlay"
+        const val KEY_DEBUG_UI_MARGIN_OVERLAY_RESET_V1 = "debug_ui_margin_overlay_reset_v1"
+        const val KEY_ISLAND_STATUSBAR_IGNORE_NOTIFICATIONS = "island_statusbar_ignore_notifications"
         const val KEY_ISLAND_SECONDARY_BUBBLE = "island_secondary_bubble"
         const val KEY_ISLAND_MAX_ITEMS = "island_max_items"
         const val KEY_ISLAND_ALWAYS_GESTURES = "island_always_gestures"
         const val KEY_ISLAND_DISMISS_ON_OUTSIDE = "island_dismiss_on_outside"
+        const val KEY_ISLAND_GESTURE_HINTS = "island_gesture_hints"
         const val KEY_ISLAND_HIDE_LIVE_UPDATES = "island_hide_live_updates"
         const val KEY_ISLAND_HIDE_STATUS_BAR_INSETS = "island_hide_status_bar_insets"
         const val KEY_ISLAND_CAMERA_POSITION = "island_camera_position"
@@ -637,9 +730,11 @@ class SettingsRepository(
         const val KEY_ISLAND_PROVIDERS_HIDDEN = "island_providers_hidden"
         const val KEY_ISLAND_PROVIDERS_LAUNCHER_ONLY = "island_providers_launcher_only"
         const val KEY_ISLAND_PROVIDERS_HIDE_LOCKED = "island_providers_hide_locked"
+        const val KEY_ISLAND_PROVIDERS_CHIP = "island_providers_chip"
+        const val KEY_ISLAND_PROVIDERS_ON_UPDATE = "island_providers_on_update"
 
         private const val LEGACY_WEATHER_API_KEY_PREFIX = "weather_api_key"
-        const val KEY_ISLAND_CALENDAR_EMOJIS = "island_calendar_emojis"
+        const val KEY_ISLAND_CALENDAR_ICONS = "island_calendar_icons"
         const val KEY_ISLAND_TIMERS_SHOW_SCREEN_RECORDER = "island_timers_show_screen_recorder"
         const val KEY_ISLAND_TIMERS_FILTER_APPS = "island_timers_filter_apps"
         const val KEY_ISLAND_TIMERS_SELECTED_APPS = "island_timers_selected_apps"
@@ -648,6 +743,8 @@ class SettingsRepository(
         const val KEY_ISLAND_NETWORK_ACTIVITY = "island_network_activity"
         const val KEY_ISLAND_SIGNAL_WIFI = "island_signal_wifi"
         const val KEY_ISLAND_PRIORITY_ORDER = "island_priority_order"
+        const val KEY_ISLAND_HIDDEN_ENTRIES = "island_hidden_entries"
+        val DEFAULT_ISLAND_HIDDEN_ENTRIES = setOf("starlink")
         const val KEY_ISLAND_SIGNAL_LOW_ONLY = "island_signal_low_only"
         const val KEY_ISLAND_SIGNAL_NETWORK_TYPES = "island_signal_network_modes"
         const val KEY_ISLAND_SIGNAL_SHOW_MODE = "island_signal_show_mode"
@@ -659,6 +756,7 @@ class SettingsRepository(
         const val KEY_ISLAND_ALARM_LAUNCHER_ONLY = "island_alarm_launcher_only"
         const val KEY_ISLAND_ALARM_WINDOW_HOURS = "island_alarm_window_hours"
         const val KEY_ISLAND_ALARM_HIDE_TIME = "island_alarm_hide_time"
+        const val KEY_ISLAND_ALARM_SHOW_REMAINING = "island_alarm_show_remaining"
         const val KEY_ISLAND_SHOW_TRAVEL = "island_show_travel"
         const val KEY_ISLAND_SHOW_CAFFEINATE = "island_show_caffeinate"
         const val KEY_ISLAND_CAFFEINATE_SHOW_TIME = "island_caffeinate_show_time"
@@ -666,11 +764,20 @@ class SettingsRepository(
         const val KEY_ISLAND_SHOW_NAVIGATION = "island_show_navigation"
         const val KEY_ISLAND_NAVIGATION_ON_NEW = "island_navigation_on_new"
         const val KEY_ISLAND_NAVIGATION_PEEK_AFTER_EXPAND = "island_navigation_peek_after_expand"
+        const val KEY_ISLAND_NAVIGATION_HIDE_WHILE_DRIVING = "island_navigation_hide_while_driving"
         const val ISLAND_NAVIGATION_ON_NEW_EXPAND = "expand"
         const val ISLAND_NAVIGATION_ON_NEW_PEEK = "peek"
         const val ISLAND_NAVIGATION_ON_NEW_OFF = "off"
         const val KEY_ISLAND_NAVIGATION_EXPAND_DISTANCE = "island_navigation_expand_distance"
         const val KEY_ISLAND_SHOW_HOTSPOT = "island_show_hotspot"
+        const val KEY_ISLAND_SHOW_STARLINK = "island_show_starlink"
+        const val KEY_ISLAND_STARLINK_COMPACT = "island_starlink_compact"
+        const val KEY_ISLAND_STARLINK_SPEEDS = "island_starlink_speeds"
+        const val KEY_ISLAND_STARLINK_SPEED_MODE = "island_starlink_speed_mode"
+        const val KEY_ISLAND_STARLINK_SPEED_UNIT = "island_starlink_speed_unit"
+        const val KEY_ISLAND_STARLINK_HIDE_UNIT = "island_starlink_hide_unit"
+        const val KEY_ISLAND_STARLINK_HIDE_ARROW = "island_starlink_hide_arrow"
+        const val KEY_ISLAND_STARLINK_CHIP = "island_starlink_chip"
         const val KEY_ISLAND_BRIEF_ENABLED = "island_brief_enabled"
         const val KEY_ISLAND_BRIEF_SHOW_ALARM = "island_brief_show_alarm"
         const val KEY_ISLAND_BRIEF_TWO_LINE_HEADER = "island_brief_two_line_header"
@@ -683,6 +790,11 @@ class SettingsRepository(
         const val KEY_ISLAND_MEDIA_PEEK_SONG_CHANGE = "island_media_peek_song_change"
         const val KEY_ISLAND_MEDIA_KEEP_WHEN_PAUSED = "island_media_keep_when_paused"
         const val KEY_ISLAND_MEDIA_SHOW_PREVIOUS = "island_media_show_previous"
+        const val KEY_ISLAND_MEDIA_USE_ART_COLOR = "island_media_use_art_color"
+        const val KEY_ISLAND_MEDIA_BUBBLE = "island_media_bubble"
+        const val KEY_ISLAND_MEDIA_BUBBLE_WIDE = "island_media_bubble_wide"
+        const val KEY_ISLAND_MEDIA_BUBBLE_FILL_ART = "island_media_bubble_fill_art"
+        const val KEY_ISLAND_MEDIA_PLAYER_STYLE = "island_media_player_style"
         const val KEY_ISLAND_MEDIA_SHOW_LIKE = "island_media_show_like"
         const val KEY_ISLAND_NOTIF_CONDENSED_INFO = "island_notif_condensed_info"
         const val KEY_ISLAND_NOTIF_PEEK_STYLE = "island_notif_peek_style"
@@ -691,11 +803,10 @@ class SettingsRepository(
         const val ISLAND_NOTIF_PEEK_STYLE_MINIMAL = "minimal"
         const val ISLAND_NOTIF_PEEK_STYLE_EXPANDED = "expanded"
         const val KEY_ISLAND_NOTIF_KEEP_PROGRESS = "island_notif_keep_progress"
+        const val KEY_ISLAND_LIVE_UPDATES_COUNT = "island_live_updates_count"
+        const val KEY_ISLAND_LIVE_UPDATES_EXPANDED = "island_live_updates_expanded"
         const val KEY_ISLAND_NOTIF_QUEUE = "island_notif_queue"
-        const val KEY_ISLAND_NOTIF_QUEUE_STYLE = "island_notif_queue_style"
-        const val ISLAND_NOTIF_QUEUE_STYLE_STACK = "stack"
-        const val ISLAND_NOTIF_QUEUE_STYLE_OVERLAP = "overlap"
-        const val KEY_ISLAND_NOTIF_QUEUE_INLINE = "island_notif_queue_inline"
+        const val KEY_ISLAND_SECONDARY_BUBBLE_SIDE = "island_secondary_bubble_side"
         const val KEY_ISLAND_NOTIF_SKIP_SILENT = "island_notif_skip_silent"
         const val KEY_ISLAND_NOTIF_FOLLOW_DND = "island_notif_follow_dnd"
         const val KEY_ISLAND_NOTIF_FILTER_APPS = "island_notif_filter_apps"
@@ -712,6 +823,7 @@ class SettingsRepository(
         const val ISLAND_NOTIF_HUB_ORDER_PRIORITY = "priority"
         const val ISLAND_NOTIF_HUB_ORDER_RECENT = "recent"
         const val KEY_ISLAND_NOTIF_TAP_TO_OPEN = "island_notif_tap_to_open"
+        const val KEY_ISLAND_TAP_TO_OPEN_EXPANDED = "island_tap_to_open_expanded"
         const val KEY_ISLAND_OTP_ENABLED = "island_otp_enabled"
         const val KEY_ISLAND_OTP_TAP_TO_COPY = "island_otp_tap_to_copy"
         const val KEY_ISLAND_OTP_DISMISS_AFTER_COPY = "island_otp_dismiss_after_copy"
@@ -723,9 +835,10 @@ class SettingsRepository(
         const val KEY_ISLAND_BORDER_OUTLINE_THICKNESS = "island_border_outline_thickness"
         const val KEY_ISLAND_BORDER_OUTLINE_HIDE_EXPANDED = "island_border_outline_hide_expanded"
         const val KEY_ISLAND_PULSE_SHADOW_ON_NOTIFICATION = "island_pulse_shadow_on_notification"
-        const val KEY_ISLAND_PULSE_SHADOW_SIZE = "island_pulse_shadow_size"
-        const val KEY_ISLAND_PULSE_SHADOW_Y_SHIFT = "island_pulse_shadow_y_shift"
-        const val KEY_ISLAND_PULSE_SHADOW_SPREAD = "island_pulse_shadow_spread"
+        const val KEY_ISLAND_PULSE_SHADOW_BLUR = "island_pulse_shadow_blur"
+        const val KEY_ISLAND_PULSE_SHADOW_SPREAD_DP = "island_pulse_shadow_spread_dp"
+        const val KEY_ISLAND_PULSE_SHADOW_OFFSET_Y = "island_pulse_shadow_offset_y"
+        const val KEY_ISLAND_PULSE_SHADOW_OPACITY = "island_pulse_shadow_opacity"
         const val KEY_ISLAND_PULSE_SHADOW_DURATION_MS = "island_pulse_shadow_duration_ms"
         const val ISLAND_BORDER_OUTLINE_DEFAULT_COLOR = "#202020"
 
@@ -747,6 +860,7 @@ class SettingsRepository(
         const val KEY_STATUS_GLANCE_CALENDAR_SHOW_ALL_DAY = "status_glance_calendar_show_all_day"
         const val KEY_STATUS_GLANCE_SHOW_MEDIA = "status_glance_show_media"
         const val KEY_STATUS_GLANCE_SHOW_TIME = "status_glance_show_time"
+        const val KEY_STATUS_GLANCE_SHOW_SECONDS = "status_glance_show_seconds"
         const val KEY_STATUS_GLANCE_BACKGROUND_PILL = "status_glance_background_pill"
         const val KEY_STATUS_GLANCE_ALBUM_ART_COLORS = "status_glance_album_art_colors"
         const val KEY_STATUS_GLANCE_SHOW_BATTERY = "status_glance_show_battery"
@@ -778,6 +892,7 @@ class SettingsRepository(
         const val KEY_SHUT_UP_ATTEMPT_SHIZUKU_RESTART = "shut_up_attempt_shizuku_restart"
         const val KEY_SHUT_UP_RESTORE_DELAY = "shut_up_restore_delay"
         const val KEY_SHUT_UP_RESTORE_MODE = "shut_up_restore_mode"
+        const val KEY_ACCESSIBILITY_TILE_SAVED = "accessibility_tile_saved_services"
         const val KEY_SHUT_UP_KEYBOARD = "shut_up_keyboard"
         const val KEY_SHIZUKU_AUTH_TOKEN = "shizuku_auth_token"
         const val KEY_EDGE_LIGHTING_SWEEP_SELECTED_SHAPES = "edge_lighting_sweep_selected_shapes"
@@ -847,7 +962,17 @@ class SettingsRepository(
         const val KEY_SIM_NAMES_APPLY_ON_BOOT = "sim_names_apply_on_boot"
         const val KEY_POWER_SAVING_APPLY_ON_BOOT = "power_saving_apply_on_boot"
         const val KEY_UNSPLASH_ACCESS_KEY = "unsplash_access_key"
+        const val KEY_WALLPAPER_STAGING_SEEN = "wallpaper_staging_seen"
+        private const val WALLPAPER_STAGING_SEEN_MAX = 300
         const val KEY_EXTERNAL_CONTROL_TOKEN = "external_control_token"
+        private val CONFIG_PREF_FILES =
+            listOf(
+                "essentials_prefs",
+                "caffeinate_prefs",
+                "link_prefs",
+                "diy_automations_prefs",
+                "live_wallpaper_prefs",
+            )
     }
 
     fun getExternalControlToken(): String? = prefs.getString(KEY_EXTERNAL_CONTROL_TOKEN, null)?.takeIf { it.isNotBlank() }
@@ -855,6 +980,18 @@ class SettingsRepository(
     fun setExternalControlToken(token: String) = putString(KEY_EXTERNAL_CONTROL_TOKEN, token.trim())
 
     fun getUnsplashAccessKey(): String? = prefs.getString(KEY_UNSPLASH_ACCESS_KEY, null)
+
+    fun getWallpaperStagingSeen(): List<String> =
+        prefs.getString(KEY_WALLPAPER_STAGING_SEEN, null)?.split(',')?.filter { it.isNotBlank() }.orEmpty()
+
+    fun markWallpaperStagingSeen(id: String) {
+        val seen = (getWallpaperStagingSeen() - id + id).takeLast(WALLPAPER_STAGING_SEEN_MAX)
+        prefs.edit().putString(KEY_WALLPAPER_STAGING_SEEN, seen.joinToString(",")).apply()
+    }
+
+    fun clearWallpaperStagingSeen() {
+        prefs.edit().remove(KEY_WALLPAPER_STAGING_SEEN).apply()
+    }
 
     fun setUnsplashAccessKey(key: String?) {
         if (key.isNullOrBlank()) {
@@ -1858,16 +1995,7 @@ class SettingsRepository(
     fun getAllConfigsAsJsonString(): String {
         return try {
             val allConfigs = mutableMapOf<String, Map<String, Map<String, Any>>>()
-            val prefFiles =
-                listOf(
-                    "essentials_prefs",
-                    "caffeinate_prefs",
-                    "link_prefs",
-                    "diy_automations_prefs",
-                    "live_wallpaper_prefs",
-                )
-
-            prefFiles.forEach { fileName ->
+            CONFIG_PREF_FILES.forEach { fileName ->
                 val p = context.getSharedPreferences(fileName, Context.MODE_PRIVATE)
                 val wrapperMap = mutableMapOf<String, Map<String, Any>>()
 
@@ -1877,6 +2005,8 @@ class SettingsRepository(
                     if (key == KEY_GITHUB_ACCESS_TOKEN ||
                         key == KEY_GITHUB_WORKFLOW_TOKEN ||
                         key == KEY_SHIZUKU_AUTH_TOKEN ||
+                        key == KEY_EXTERNAL_CONTROL_TOKEN ||
+                        key == KEY_UNSPLASH_ACCESS_KEY ||
                         key.startsWith(LEGACY_WEATHER_API_KEY_PREFIX) ||
                         key.startsWith("mac_battery_") ||
                         key == "airsync_mac_connected" ||
@@ -1962,6 +2092,7 @@ class SettingsRepository(
                 gson.fromJson(json, type) ?: emptyMap()
 
             allConfigs.forEach { (fileName, prefWrapper) ->
+                if (fileName !in CONFIG_PREF_FILES) return@forEach
                 val p = context.getSharedPreferences(fileName, Context.MODE_PRIVATE)
 
                 // Preserve sensitive or volatile local state not present in backups
@@ -1971,6 +2102,8 @@ class SettingsRepository(
                         KEY_GITHUB_ACCESS_TOKEN,
                         KEY_GITHUB_WORKFLOW_TOKEN,
                         KEY_SHIZUKU_AUTH_TOKEN,
+                        KEY_EXTERNAL_CONTROL_TOKEN,
+                        KEY_UNSPLASH_ACCESS_KEY,
                         LEGACY_WEATHER_API_KEY_PREFIX,
                         "airsync_mac_connected",
                         KEY_SNOOZE_DISCOVERED_CHANNELS,
@@ -2011,6 +2144,8 @@ class SettingsRepository(
                             if (key == KEY_GITHUB_ACCESS_TOKEN ||
                                 key == KEY_GITHUB_WORKFLOW_TOKEN ||
                                 key == KEY_SHIZUKU_AUTH_TOKEN ||
+                                key == KEY_EXTERNAL_CONTROL_TOKEN ||
+                                key == KEY_UNSPLASH_ACCESS_KEY ||
                                 key.startsWith(LEGACY_WEATHER_API_KEY_PREFIX)
                             ) {
                                 return@forEach
@@ -2293,7 +2428,7 @@ class SettingsRepository(
 
     fun setShutUpKeyboard(ime: String) = putString(KEY_SHUT_UP_KEYBOARD, ime)
 
-    fun getShutUpRestoreMode(): String = prefs.getString(KEY_SHUT_UP_RESTORE_MODE, "Auto") ?: "Auto"
+    fun getShutUpRestoreMode(): String = prefs.getString(KEY_SHUT_UP_RESTORE_MODE, "Notify") ?: "Notify"
 
     /**
      * Executes the set shut up restore mode operation.
@@ -3836,12 +3971,8 @@ class SettingsRepository(
     }
 
     private fun setCameraPlacementFloat(baseKey: String, value: Float, useOrientation: Boolean) {
-        if (useOrientation) {
-            putFloat(orientationKey(baseKey), value)
-        } else {
-            putFloat("$baseKey@${getDisplayProfileId()}", value)
-            putFloat(baseKey, value)
-        }
+        if (useOrientation) putFloat(orientationKey(baseKey), value)
+        else putFloat("$baseKey@${getDisplayProfileId()}", value)
     }
 
     private fun getCameraPlacementString(baseKey: String, default: String, useOrientation: Boolean): String {
@@ -3855,11 +3986,25 @@ class SettingsRepository(
 
     private fun setCameraPlacementString(baseKey: String, value: String, useOrientation: Boolean) {
         if (useOrientation) putString(orientationKey(baseKey), value)
-        else {
-            putString("$baseKey@${getDisplayProfileId()}", value)
-            putString(baseKey, value)
-        }
+        else putString("$baseKey@${getDisplayProfileId()}", value)
     }
+
+    private fun displayKey(baseKey: String): String = "$baseKey@${getDisplayProfileId()}"
+
+    private fun getDisplayFloat(baseKey: String, default: Float): Float =
+        displayKey(baseKey).let { if (contains(it)) getFloat(it, default) else getFloat(baseKey, default) }
+
+    private fun putDisplayFloat(baseKey: String, value: Float) = putFloat(displayKey(baseKey), value)
+
+    private fun getDisplayInt(baseKey: String, default: Int): Int =
+        displayKey(baseKey).let { if (contains(it)) getInt(it, default) else getInt(baseKey, default) }
+
+    private fun putDisplayInt(baseKey: String, value: Int) = putInt(displayKey(baseKey), value)
+
+    private fun getDisplayBoolean(baseKey: String, default: Boolean): Boolean =
+        displayKey(baseKey).let { if (contains(it)) getBoolean(it, default) else getBoolean(baseKey, default) }
+
+    private fun putDisplayBoolean(baseKey: String, value: Boolean) = putBoolean(displayKey(baseKey), value)
 
     private fun getCameraHidden(baseKey: String, default: Boolean): Boolean =
         getBoolean("$baseKey@${getDisplayProfileId()}", getBoolean(baseKey, default))
@@ -4005,6 +4150,8 @@ class SettingsRepository(
 
     fun isDuoUseMaterialYouEnabled(): Boolean = getBoolean(KEY_DUO_USE_MATERIAL_YOU, true)
     fun setDuoUseMaterialYouEnabled(enabled: Boolean) = putBoolean(KEY_DUO_USE_MATERIAL_YOU, enabled)
+    fun isDuoMatchIslandColorsEnabled(): Boolean = getBoolean(KEY_DUO_MATCH_ISLAND_COLORS, false)
+    fun setDuoMatchIslandColorsEnabled(enabled: Boolean) = putBoolean(KEY_DUO_MATCH_ISLAND_COLORS, enabled)
 
     fun getDuoCustomColor(): String = getString(KEY_DUO_CUSTOM_COLOR, "#FFFFFF") ?: "#FFFFFF"
     fun setDuoCustomColor(colorHex: String) = putString(KEY_DUO_CUSTOM_COLOR, colorHex)
@@ -4037,8 +4184,8 @@ class SettingsRepository(
         if (isIslandSuppressSystemHeadsUpEnabled()) applyHeadsUpSuppression(enabled)
     }
 
-    fun isIslandAutoDetectEnabled(): Boolean = getBoolean(KEY_ISLAND_USE_AUTO_DETECT, true)
-    fun setIslandAutoDetectEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_USE_AUTO_DETECT, enabled)
+    fun isIslandAutoDetectEnabled(): Boolean = getDisplayBoolean(KEY_ISLAND_USE_AUTO_DETECT, true)
+    fun setIslandAutoDetectEnabled(enabled: Boolean) = putDisplayBoolean(KEY_ISLAND_USE_AUTO_DETECT, enabled)
 
     fun getIslandCameraOffsetX(): Float = getCameraPlacementFloat(KEY_ISLAND_CAMERA_OFFSET_X, 50f, isIslandOrientationProfilesEnabled())
     fun setIslandCameraOffsetX(value: Float) = setCameraPlacementFloat(KEY_ISLAND_CAMERA_OFFSET_X, value, isIslandOrientationProfilesEnabled())
@@ -4049,11 +4196,13 @@ class SettingsRepository(
     fun getIslandCameraSize(): Float = getCameraPlacementFloat(KEY_ISLAND_CAMERA_SIZE, 1.0f, isIslandOrientationProfilesEnabled())
     fun setIslandCameraSize(value: Float) = setCameraPlacementFloat(KEY_ISLAND_CAMERA_SIZE, value, isIslandOrientationProfilesEnabled())
 
-    fun getIslandMaxWidth(): Float = getFloat(KEY_ISLAND_MAX_WIDTH, 360f)
-    fun setIslandMaxWidth(value: Float) = putFloat(KEY_ISLAND_MAX_WIDTH, value)
+    fun getIslandMaxWidth(): Float = getDisplayFloat(KEY_ISLAND_MAX_WIDTH, 360f)
+    fun setIslandMaxWidth(value: Float) = putDisplayFloat(KEY_ISLAND_MAX_WIDTH, value)
 
-    fun getIslandCutoutGap(): Float = getFloat(KEY_ISLAND_CUTOUT_GAP, 6f)
-    fun setIslandCutoutGap(value: Float) = putFloat(KEY_ISLAND_CUTOUT_GAP, value)
+    fun getIslandCutoutGap(): Float = getDisplayFloat(KEY_ISLAND_CUTOUT_GAP, 6f)
+    fun setIslandCutoutGap(value: Float) = putDisplayFloat(KEY_ISLAND_CUTOUT_GAP, value)
+    fun getIslandPaddingAround(): Float = getDisplayFloat(KEY_ISLAND_PADDING_AROUND, 6f)
+    fun setIslandPaddingAround(value: Float) = putDisplayFloat(KEY_ISLAND_PADDING_AROUND, value)
 
     fun isIslandSuppressSystemHeadsUpEnabled(): Boolean = getBoolean(KEY_ISLAND_SUPPRESS_SYSTEM_HEADS_UP, false)
     fun setIslandSuppressSystemHeadsUpEnabled(enabled: Boolean) {
@@ -4069,8 +4218,17 @@ class SettingsRepository(
             ?: if (isIslandHideWhenScreenOffEnabled()) ISLAND_SHOW_WHEN_UNLOCKED else ISLAND_SHOW_WHEN_ALWAYS
     fun setIslandShowWhen(value: String) = putString(KEY_ISLAND_SHOW_WHEN, value)
 
+    fun getIslandDismissDirection(): String =
+        getString(KEY_ISLAND_DISMISS_DIRECTION, ISLAND_DISMISS_HORIZONTAL) ?: ISLAND_DISMISS_HORIZONTAL
+
+    fun setIslandDismissDirection(value: String) = putString(KEY_ISLAND_DISMISS_DIRECTION, value)
+
     fun getIslandTimeoutMs(): Long = getLong(KEY_ISLAND_TIMEOUT_MS, 4500L)
     fun setIslandTimeoutMs(value: Long) = putLong(KEY_ISLAND_TIMEOUT_MS, value)
+
+    fun isIslandTimeoutAfterMarqueeEnabled(): Boolean = getBoolean(KEY_ISLAND_TIMEOUT_AFTER_MARQUEE, false)
+
+    fun setIslandTimeoutAfterMarqueeEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_TIMEOUT_AFTER_MARQUEE, enabled)
 
     fun isIslandBorderOutlineEnabled(): Boolean = getBoolean(KEY_ISLAND_BORDER_OUTLINE_ENABLED, false)
     fun setIslandBorderOutlineEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_BORDER_OUTLINE_ENABLED, enabled)
@@ -4085,40 +4243,67 @@ class SettingsRepository(
     fun isIslandBorderOutlineHiddenWhenExpanded(): Boolean = getBoolean(KEY_ISLAND_BORDER_OUTLINE_HIDE_EXPANDED, false)
     fun setIslandBorderOutlineHiddenWhenExpanded(hidden: Boolean) = putBoolean(KEY_ISLAND_BORDER_OUTLINE_HIDE_EXPANDED, hidden)
 
-    fun getIslandBorderOutlineThickness(): Float = getFloat(KEY_ISLAND_BORDER_OUTLINE_THICKNESS, 1f)
-    fun setIslandBorderOutlineThickness(value: Float) = putFloat(KEY_ISLAND_BORDER_OUTLINE_THICKNESS, value)
+    fun getIslandBorderOutlineThickness(): Float = getDisplayFloat(KEY_ISLAND_BORDER_OUTLINE_THICKNESS, 1f)
+    fun setIslandBorderOutlineThickness(value: Float) = putDisplayFloat(KEY_ISLAND_BORDER_OUTLINE_THICKNESS, value)
 
     fun isIslandPulseShadowEnabled(): Boolean = getBoolean(KEY_ISLAND_PULSE_SHADOW_ON_NOTIFICATION, false)
     fun setIslandPulseShadowEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_PULSE_SHADOW_ON_NOTIFICATION, enabled)
 
-    fun getIslandPulseShadowSize(): Float = getFloat(KEY_ISLAND_PULSE_SHADOW_SIZE, 0.5f)
-    fun setIslandPulseShadowSize(value: Float) = putFloat(KEY_ISLAND_PULSE_SHADOW_SIZE, value)
+    fun getIslandPulseShadowBlur(): Float = getFloat(KEY_ISLAND_PULSE_SHADOW_BLUR, 20f)
+    fun setIslandPulseShadowBlur(value: Float) = putFloat(KEY_ISLAND_PULSE_SHADOW_BLUR, value)
 
-    fun getIslandPulseShadowYShift(): Float = getFloat(KEY_ISLAND_PULSE_SHADOW_Y_SHIFT, 0.35f)
-    fun setIslandPulseShadowYShift(value: Float) = putFloat(KEY_ISLAND_PULSE_SHADOW_Y_SHIFT, value)
+    fun getIslandPulseShadowSpread(): Float = getFloat(KEY_ISLAND_PULSE_SHADOW_SPREAD_DP, 6f)
+    fun setIslandPulseShadowSpread(value: Float) = putFloat(KEY_ISLAND_PULSE_SHADOW_SPREAD_DP, value)
 
-    fun getIslandPulseShadowSpread(): Float = getFloat(KEY_ISLAND_PULSE_SHADOW_SPREAD, 2f)
-    fun setIslandPulseShadowSpread(value: Float) = putFloat(KEY_ISLAND_PULSE_SHADOW_SPREAD, value)
+    fun getIslandPulseShadowOffsetY(): Float = getFloat(KEY_ISLAND_PULSE_SHADOW_OFFSET_Y, 1f)
+    fun setIslandPulseShadowOffsetY(value: Float) = putFloat(KEY_ISLAND_PULSE_SHADOW_OFFSET_Y, value)
+
+    fun getIslandPulseShadowOpacity(): Float = getFloat(KEY_ISLAND_PULSE_SHADOW_OPACITY, 0.35f)
+    fun setIslandPulseShadowOpacity(value: Float) = putFloat(KEY_ISLAND_PULSE_SHADOW_OPACITY, value)
 
     fun getIslandPulseShadowDurationMs(): Float = getFloat(KEY_ISLAND_PULSE_SHADOW_DURATION_MS, 1450f)
     fun setIslandPulseShadowDurationMs(value: Float) = putFloat(KEY_ISLAND_PULSE_SHADOW_DURATION_MS, value)
 
     fun isIslandShowGlowEnabled(): Boolean = getBoolean(KEY_ISLAND_SHOW_GLOW, true)
     fun setIslandShowGlowEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_SHOW_GLOW, enabled)
+    fun getIslandGlowIntensity(): Float = getFloat(KEY_ISLAND_GLOW_INTENSITY, 1f)
+    fun setIslandGlowIntensity(value: Float) = putFloat(KEY_ISLAND_GLOW_INTENSITY, value)
+    fun getIslandGlowSize(): Float = getFloat(KEY_ISLAND_GLOW_SIZE, 1f)
+    fun setIslandGlowSize(value: Float) = putFloat(KEY_ISLAND_GLOW_SIZE, value)
+    fun isIslandGlowRimEnabled(): Boolean = getBoolean(KEY_ISLAND_GLOW_RIM, true)
+    fun setIslandGlowRimEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_GLOW_RIM, enabled)
+    fun isIslandGlowDynamicEnabled(): Boolean = getBoolean(KEY_ISLAND_GLOW_DYNAMIC, true)
+    fun setIslandGlowDynamicEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_GLOW_DYNAMIC, enabled)
+    fun getIslandGlowColor(): String =
+        getString(KEY_ISLAND_GLOW_COLOR, ISLAND_GLOW_DEFAULT_COLOR) ?: ISLAND_GLOW_DEFAULT_COLOR
+    fun setIslandGlowColor(colorHex: String) = putString(KEY_ISLAND_GLOW_COLOR, colorHex)
+    fun isIslandExpandedDarkNoticeDismissed(): Boolean = getBoolean(KEY_ISLAND_EXPANDED_DARK_NOTICE_DISMISSED, false)
+    fun setIslandExpandedDarkNoticeDismissed(dismissed: Boolean) = putBoolean(KEY_ISLAND_EXPANDED_DARK_NOTICE_DISMISSED, dismissed)
+    fun isIslandPreferStillEnabled(): Boolean = getBoolean(KEY_ISLAND_PREFER_STILL, false)
+    fun setIslandPreferStillEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_PREFER_STILL, enabled)
 
-    fun getIslandExpandedWidth(): Float = getFloat(KEY_ISLAND_EXPANDED_WIDTH, 360f)
-    fun setIslandExpandedWidth(value: Float) = putFloat(KEY_ISLAND_EXPANDED_WIDTH, value)
+    fun isIslandNotifThemedBubbleEnabled(): Boolean = getBoolean(KEY_ISLAND_NOTIF_THEMED_BUBBLE, false)
+    fun setIslandNotifThemedBubbleEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_NOTIF_THEMED_BUBBLE, enabled)
 
-    fun getIslandExpandedRoundness(): Float = getFloat(KEY_ISLAND_EXPANDED_ROUNDNESS, 24f)
-    fun setIslandExpandedRoundness(value: Float) = putFloat(KEY_ISLAND_EXPANDED_ROUNDNESS, value)
+    fun isIslandNotifThemedBubbleActive(): Boolean =
+        isIslandNotifThemedBubbleEnabled() && getBoolean(KEY_ISLAND_THEMED_APP_ICONS, false)
 
-    fun getIslandExpandedPadding(): Float = getFloat(KEY_ISLAND_EXPANDED_PADDING, 16f)
-    fun setIslandExpandedPadding(value: Float) = putFloat(KEY_ISLAND_EXPANDED_PADDING, value)
+    fun getIslandExpandedWidth(): Float = getDisplayFloat(KEY_ISLAND_EXPANDED_WIDTH, 360f)
+    fun setIslandExpandedWidth(value: Float) = putDisplayFloat(KEY_ISLAND_EXPANDED_WIDTH, value)
 
-    fun getIslandExpandedTopPadding(): Float = getFloat(KEY_ISLAND_EXPANDED_TOP_PADDING, 0f)
-    fun setIslandExpandedTopPadding(value: Float) = putFloat(KEY_ISLAND_EXPANDED_TOP_PADDING, value)
-    fun getIslandExpandedBottomPadding(): Float = getFloat(KEY_ISLAND_EXPANDED_BOTTOM_PADDING, 12f)
-    fun setIslandExpandedBottomPadding(value: Float) = putFloat(KEY_ISLAND_EXPANDED_BOTTOM_PADDING, value)
+    fun getIslandExpandedRoundness(): Float = getDisplayFloat(KEY_ISLAND_EXPANDED_ROUNDNESS, 24f)
+    fun setIslandExpandedRoundness(value: Float) = putDisplayFloat(KEY_ISLAND_EXPANDED_ROUNDNESS, value)
+
+    fun getIslandExpandedPadding(): Float = getDisplayFloat(KEY_ISLAND_EXPANDED_PADDING, 16f)
+    fun setIslandExpandedPadding(value: Float) = putDisplayFloat(KEY_ISLAND_EXPANDED_PADDING, value)
+
+    fun getIslandExpandedTopPadding(): Float = getDisplayFloat(KEY_ISLAND_EXPANDED_TOP_PADDING, 0f)
+    fun setIslandExpandedTopPadding(value: Float) = putDisplayFloat(KEY_ISLAND_EXPANDED_TOP_PADDING, value)
+
+    fun getIslandExpandedOffsetY(): Float = getDisplayFloat(KEY_ISLAND_EXPANDED_OFFSET_Y, 0f)
+    fun setIslandExpandedOffsetY(value: Float) = putDisplayFloat(KEY_ISLAND_EXPANDED_OFFSET_Y, value)
+    fun getIslandExpandedBottomPadding(): Float = getDisplayFloat(KEY_ISLAND_EXPANDED_BOTTOM_PADDING, 12f)
+    fun setIslandExpandedBottomPadding(value: Float) = putDisplayFloat(KEY_ISLAND_EXPANDED_BOTTOM_PADDING, value)
 
     fun getIslandExpandedTimeoutMs(): Long = getLong(KEY_ISLAND_EXPANDED_TIMEOUT_MS, 0L)
     fun setIslandExpandedTimeoutMs(value: Long) = putLong(KEY_ISLAND_EXPANDED_TIMEOUT_MS, value)
@@ -4201,20 +4386,27 @@ class SettingsRepository(
     fun setIslandDevicesBatteryOnlyLowEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_DEVICES_BATTERY_ONLY_LOW, enabled)
     fun setIslandBatteryPercentageConditional(enabled: Boolean) = putBoolean(KEY_ISLAND_BATTERY_PERCENTAGE_CONDITIONAL, enabled)
 
-    fun getIslandCalendarEmojis(): Map<Long, String> =
+    fun getIslandCalendarHiddenEvents(): Set<String> =
+        prefs.getStringSet(KEY_ISLAND_CALENDAR_HIDDEN_EVENTS, emptySet())?.toSet() ?: emptySet()
+
+    fun setIslandCalendarHiddenEvents(keys: Set<String>) {
+        prefs.edit().putStringSet(KEY_ISLAND_CALENDAR_HIDDEN_EVENTS, keys).apply()
+    }
+
+    fun getIslandCalendarIcons(): Map<Long, String> =
         try {
-            val json = org.json.JSONObject(getString(KEY_ISLAND_CALENDAR_EMOJIS, "{}") ?: "{}")
+            val json = org.json.JSONObject(getString(KEY_ISLAND_CALENDAR_ICONS, "{}") ?: "{}")
             json.keys().asSequence().mapNotNull { key -> key.toLongOrNull()?.let { it to json.getString(key) } }.toMap()
         } catch (_: Exception) {
             emptyMap()
         }
 
-    fun setIslandCalendarEmoji(calendarId: Long, emoji: String?) {
-        val updated = getIslandCalendarEmojis().toMutableMap()
-        if (emoji.isNullOrBlank()) updated.remove(calendarId) else updated[calendarId] = emoji
+    fun setIslandCalendarIcon(calendarId: Long, icon: String?) {
+        val updated = getIslandCalendarIcons().toMutableMap()
+        if (icon.isNullOrBlank()) updated.remove(calendarId) else updated[calendarId] = icon
         val json = org.json.JSONObject()
         updated.forEach { (id, value) -> json.put(id.toString(), value) }
-        putString(KEY_ISLAND_CALENDAR_EMOJIS, json.toString())
+        putString(KEY_ISLAND_CALENDAR_ICONS, json.toString())
     }
 
     fun isIslandShowTimersEnabled(): Boolean = getBoolean(KEY_ISLAND_SHOW_TIMERS, true)
@@ -4237,6 +4429,9 @@ class SettingsRepository(
     fun getIslandPriorityOrder(): List<String>? =
         getString(KEY_ISLAND_PRIORITY_ORDER, null)?.split(",")?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() }
     fun setIslandPriorityOrder(order: List<String>?) = putString(KEY_ISLAND_PRIORITY_ORDER, order?.joinToString(","))
+    fun getIslandHiddenEntries(): Set<String> =
+        getString(KEY_ISLAND_HIDDEN_ENTRIES, null)?.split(",")?.filter { it.isNotBlank() }?.toSet() ?: DEFAULT_ISLAND_HIDDEN_ENTRIES
+    fun setIslandHiddenEntries(ids: Set<String>) = putString(KEY_ISLAND_HIDDEN_ENTRIES, ids.joinToString(","))
     fun isIslandSignalWifiEnabled(): Boolean = getBoolean(KEY_ISLAND_SIGNAL_WIFI, false)
     fun setIslandSignalWifiEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_SIGNAL_WIFI, enabled)
     fun isIslandShowSignalEnabled(): Boolean = getBoolean(KEY_ISLAND_SHOW_SIGNAL, false)
@@ -4262,6 +4457,9 @@ class SettingsRepository(
     fun getIslandAlarmWindowHours(): Int = getInt(KEY_ISLAND_ALARM_WINDOW_HOURS, 12)
     fun setIslandAlarmWindowHours(hours: Int) = putInt(KEY_ISLAND_ALARM_WINDOW_HOURS, hours)
 
+    fun isIslandAlarmShowRemainingEnabled(): Boolean = getBoolean(KEY_ISLAND_ALARM_SHOW_REMAINING, false)
+    fun setIslandAlarmShowRemainingEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_ALARM_SHOW_REMAINING, enabled)
+
     fun isIslandShowTravelEnabled(): Boolean = getBoolean(KEY_ISLAND_SHOW_TRAVEL, true)
     fun setIslandShowTravelEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_SHOW_TRAVEL, enabled)
 
@@ -4283,11 +4481,16 @@ class SettingsRepository(
     fun isIslandNavigationPeekAfterExpandEnabled(): Boolean = getBoolean(KEY_ISLAND_NAVIGATION_PEEK_AFTER_EXPAND, false)
     fun setIslandNavigationPeekAfterExpandEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_NAVIGATION_PEEK_AFTER_EXPAND, enabled)
 
+    fun isIslandNavigationHideWhileDrivingEnabled(): Boolean = getBoolean(KEY_ISLAND_NAVIGATION_HIDE_WHILE_DRIVING, false)
+    fun setIslandNavigationHideWhileDrivingEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_NAVIGATION_HIDE_WHILE_DRIVING, enabled)
+
     fun getIslandNavigationExpandDistance(): Int = getInt(KEY_ISLAND_NAVIGATION_EXPAND_DISTANCE, 200)
     fun setIslandNavigationExpandDistance(meters: Int) = putInt(KEY_ISLAND_NAVIGATION_EXPAND_DISTANCE, meters)
 
     fun isIslandShowHotspotEnabled(): Boolean = getBoolean(KEY_ISLAND_SHOW_HOTSPOT, false)
     fun setIslandShowHotspotEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_SHOW_HOTSPOT, enabled)
+    fun isIslandShowStarlinkEnabled(): Boolean = getBoolean(KEY_ISLAND_SHOW_STARLINK, false)
+    fun setIslandShowStarlinkEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_SHOW_STARLINK, enabled)
 
     fun isIslandBriefEnabled(): Boolean = getBoolean(KEY_ISLAND_BRIEF_ENABLED, false)
     fun setIslandBriefEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_BRIEF_ENABLED, enabled)
@@ -4315,8 +4518,11 @@ class SettingsRepository(
         getString(KEY_ISLAND_PREVIEW_STAGE, ISLAND_PREVIEW_STAGE_AUTO) ?: ISLAND_PREVIEW_STAGE_AUTO
     fun setIslandPreviewStage(value: String) = putString(KEY_ISLAND_PREVIEW_STAGE, value)
 
-    fun getIslandExpandedScale(): Float = getFloat(KEY_ISLAND_EXPANDED_SCALE, 1f)
-    fun setIslandExpandedScale(value: Float) = putFloat(KEY_ISLAND_EXPANDED_SCALE, value)
+    fun getIslandNotifMaxHeight(): Float = getFloat(KEY_ISLAND_NOTIF_MAX_HEIGHT, 0f)
+    fun setIslandNotifMaxHeight(value: Float) = putFloat(KEY_ISLAND_NOTIF_MAX_HEIGHT, value)
+
+    fun getIslandExpandedScale(): Float = getDisplayFloat(KEY_ISLAND_EXPANDED_SCALE, 1f)
+    fun setIslandExpandedScale(value: Float) = putDisplayFloat(KEY_ISLAND_EXPANDED_SCALE, value)
 
     fun isIslandHideLiveUpdatesEnabled(): Boolean = getBoolean(KEY_ISLAND_HIDE_LIVE_UPDATES, false)
     fun setIslandHideLiveUpdatesEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_HIDE_LIVE_UPDATES, enabled)
@@ -4325,12 +4531,19 @@ class SettingsRepository(
     fun isIslandDismissOnOutsideEnabled(): Boolean = getBoolean(KEY_ISLAND_DISMISS_ON_OUTSIDE, false)
     fun setIslandDismissOnOutsideEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_DISMISS_ON_OUTSIDE, enabled)
 
+    fun isIslandGestureHintsEnabled(): Boolean = getBoolean(KEY_ISLAND_GESTURE_HINTS, true)
+    fun setIslandGestureHintsEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_GESTURE_HINTS, enabled)
+
     fun isIslandHideInOwnerAppEnabled(): Boolean = getBoolean(KEY_ISLAND_HIDE_IN_OWNER_APP, false)
     fun setIslandHideInOwnerAppEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_HIDE_IN_OWNER_APP, enabled)
 
-    fun isIslandKeepOnLandscapeEnabled(): Boolean = getBoolean(KEY_ISLAND_KEEP_ON_LANDSCAPE, false)
+    fun isIslandHideMediaInOwnerAppEnabled(): Boolean = getBoolean(KEY_ISLAND_HIDE_MEDIA_IN_OWNER_APP, false)
 
-    fun setIslandKeepOnLandscapeEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_KEEP_ON_LANDSCAPE, enabled)
+    fun setIslandHideMediaInOwnerAppEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_HIDE_MEDIA_IN_OWNER_APP, enabled)
+
+    fun isIslandKeepOnLandscapeEnabled(): Boolean = getDisplayBoolean(KEY_ISLAND_KEEP_ON_LANDSCAPE, false)
+
+    fun setIslandKeepOnLandscapeEnabled(enabled: Boolean) = putDisplayBoolean(KEY_ISLAND_KEEP_ON_LANDSCAPE, enabled)
 
     fun isIslandKeepInFullscreenEnabled(): Boolean = getBoolean(KEY_ISLAND_KEEP_IN_FULLSCREEN, false)
 
@@ -4344,25 +4557,69 @@ class SettingsRepository(
 
     fun setIslandAlwaysGesturesEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_ALWAYS_GESTURES, enabled)
 
-    fun getIslandMaxItems(): Int = getInt(KEY_ISLAND_MAX_ITEMS, 2).coerceIn(1, 4)
+    fun getIslandMaxItems(): Int = getDisplayInt(KEY_ISLAND_MAX_ITEMS, 2).coerceIn(1, 6)
 
-    fun setIslandMaxItems(value: Int) = putInt(KEY_ISLAND_MAX_ITEMS, value)
+    fun setIslandMaxItems(value: Int) = putDisplayInt(KEY_ISLAND_MAX_ITEMS, value)
 
-    fun isIslandBondEdgeEnabled(): Boolean = getBoolean(KEY_ISLAND_BOND_EDGE, false)
+    fun isIslandBondEdgeEnabled(): Boolean = getDisplayBoolean(KEY_ISLAND_BOND_EDGE, false)
 
-    fun setIslandBondEdgeEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_BOND_EDGE, enabled)
+    fun setIslandBondEdgeEnabled(enabled: Boolean) = putDisplayBoolean(KEY_ISLAND_BOND_EDGE, enabled)
 
     fun isIslandBalanceCompactEnabled(): Boolean = getBoolean(KEY_ISLAND_BALANCE_COMPACT, true)
 
     fun setIslandBalanceCompactEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_BALANCE_COMPACT, enabled)
 
+    fun isIslandPersistentOrderEnabled(): Boolean = getBoolean(KEY_ISLAND_PERSISTENT_ORDER, false)
+
+    fun setIslandPersistentOrderEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_PERSISTENT_ORDER, enabled)
+
+    fun isIslandNeuralExpressiveEnabled(): Boolean = getBoolean(KEY_ISLAND_NEURAL_EXPRESSIVE, false)
+
+    fun setIslandNeuralExpressiveEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_NEURAL_EXPRESSIVE, enabled)
+
+    fun isIslandNeuralExpressiveAlwaysEnabled(): Boolean = getBoolean(KEY_ISLAND_NEURAL_EXPRESSIVE_ALWAYS, false)
+
+    fun setIslandNeuralExpressiveAlwaysEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_NEURAL_EXPRESSIVE_ALWAYS, enabled)
+
+    fun isIslandTransparencyEnabled(): Boolean = getBoolean(KEY_ISLAND_TRANSPARENCY, true)
+
+    fun isIslandProgressiveBlurEnabled(): Boolean = getBoolean(KEY_ISLAND_PROGRESSIVE_BLUR, !com.sameerasw.essentials.utils.DeviceUtils.isLowEndDevice(context))
+
+    fun setIslandProgressiveBlurEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_PROGRESSIVE_BLUR, enabled)
+
+    fun setIslandTransparencyEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_TRANSPARENCY, enabled)
+
+    fun isIslandBackdropBlurEnabled(): Boolean = getBoolean(KEY_ISLAND_BACKDROP_BLUR, false)
+
+    fun setIslandBackdropBlurEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_BACKDROP_BLUR, enabled)
+
+    fun getIslandBackdropBlurRadius(): Float = getFloat(KEY_ISLAND_BACKDROP_BLUR_RADIUS, 40f)
+
+    fun setIslandBackdropBlurRadius(value: Float) = putFloat(KEY_ISLAND_BACKDROP_BLUR_RADIUS, value)
+
+    fun getIslandTransparencyIntensity(): Float = getFloat(KEY_ISLAND_TRANSPARENCY_INTENSITY, 1f)
+
+    fun setIslandTransparencyIntensity(value: Float) = putFloat(KEY_ISLAND_TRANSPARENCY_INTENSITY, value)
+
+    fun isIslandStatusBarAwareWidthEnabled(): Boolean = getDisplayBoolean(KEY_ISLAND_STATUSBAR_AWARE_WIDTH, false)
+
+    fun setIslandStatusBarAwareWidthEnabled(enabled: Boolean) = putDisplayBoolean(KEY_ISLAND_STATUSBAR_AWARE_WIDTH, enabled)
+
+    fun isIslandStatusBarIgnoreNotificationsEnabled(): Boolean = getBoolean(KEY_ISLAND_STATUSBAR_IGNORE_NOTIFICATIONS, true)
+
+    fun setIslandStatusBarIgnoreNotificationsEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_STATUSBAR_IGNORE_NOTIFICATIONS, enabled)
+
+    fun isDebugUiMarginOverlayEnabled(): Boolean = getBoolean(KEY_DEBUG_UI_MARGIN_OVERLAY, false)
+
+    fun setDebugUiMarginOverlayEnabled(enabled: Boolean) = putBoolean(KEY_DEBUG_UI_MARGIN_OVERLAY, enabled)
+
     fun isIslandSecondaryBubbleEnabled(): Boolean = getBoolean(KEY_ISLAND_SECONDARY_BUBBLE, true)
 
     fun setIslandSecondaryBubbleEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_SECONDARY_BUBBLE, enabled)
 
-    fun getIslandLandscapeTopSpacing(): Float = getFloat(KEY_ISLAND_LANDSCAPE_TOP_SPACING, 0f)
+    fun getIslandLandscapeTopSpacing(): Float = getDisplayFloat(KEY_ISLAND_LANDSCAPE_TOP_SPACING, 0f)
 
-    fun setIslandLandscapeTopSpacing(value: Float) = putFloat(KEY_ISLAND_LANDSCAPE_TOP_SPACING, value)
+    fun setIslandLandscapeTopSpacing(value: Float) = putDisplayFloat(KEY_ISLAND_LANDSCAPE_TOP_SPACING, value)
 
     fun isIslandHideOnShadeEnabled(): Boolean = getBoolean(KEY_ISLAND_HIDE_ON_SHADE, false)
 
@@ -4371,14 +4628,26 @@ class SettingsRepository(
     fun getIslandAnimationSpeed(): Float = getFloat(KEY_ISLAND_ANIMATION_SPEED, 1f)
     fun setIslandAnimationSpeed(value: Float) = putFloat(KEY_ISLAND_ANIMATION_SPEED, value)
 
-    fun getIslandFontScale(): Float = getFloat(KEY_ISLAND_FONT_SCALE, 1f)
-    fun setIslandFontScale(value: Float) = putFloat(KEY_ISLAND_FONT_SCALE, value)
+    fun getIslandFontScale(): Float = getDisplayFloat(KEY_ISLAND_FONT_SCALE, 1f)
+    fun setIslandFontScale(value: Float) = putDisplayFloat(KEY_ISLAND_FONT_SCALE, value)
 
     fun isIslandLineStageEnabled(): Boolean = getBoolean(KEY_ISLAND_LINE_STAGE_ENABLED, false)
     fun setIslandLineStageEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_LINE_STAGE_ENABLED, enabled)
 
     fun getIslandPeekDurationMs(): Long = getLong(KEY_ISLAND_PEEK_DURATION_MS, 3500L)
     fun setIslandPeekDurationMs(value: Long) = putLong(KEY_ISLAND_PEEK_DURATION_MS, value)
+
+    fun getIslandProvidersShowOnUpdate(): Set<String> =
+        getString(KEY_ISLAND_PROVIDERS_ON_UPDATE)
+            ?.let { runCatching { gson.fromJson<List<String>>(it, object : TypeToken<List<String>>() {}.type) }.getOrNull() }
+            .orEmpty()
+            .toSet()
+
+    fun setIslandProviderShowOnUpdate(packageName: String, on: Boolean) {
+        val current = getIslandProvidersShowOnUpdate()
+        val next = if (on) current + packageName else current - packageName
+        putString(KEY_ISLAND_PROVIDERS_ON_UPDATE, next.takeIf { it.isNotEmpty() }?.let(gson::toJson))
+    }
 
     fun isIslandMediaPeekSongChangeEnabled(): Boolean = getBoolean(KEY_ISLAND_MEDIA_PEEK_SONG_CHANGE, true)
     fun setIslandMediaPeekSongChangeEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_MEDIA_PEEK_SONG_CHANGE, enabled)
@@ -4388,6 +4657,26 @@ class SettingsRepository(
 
     fun isIslandMediaShowPreviousEnabled(): Boolean = getBoolean(KEY_ISLAND_MEDIA_SHOW_PREVIOUS, false)
     fun setIslandMediaShowPreviousEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_MEDIA_SHOW_PREVIOUS, enabled)
+
+    fun isIslandMediaUseArtColorEnabled(): Boolean = getBoolean(KEY_ISLAND_MEDIA_USE_ART_COLOR, true)
+
+    fun setIslandMediaUseArtColorEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_MEDIA_USE_ART_COLOR, enabled)
+
+    fun isIslandMediaBubbleEnabled(): Boolean = getBoolean(KEY_ISLAND_MEDIA_BUBBLE, false)
+
+    fun setIslandMediaBubbleEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_MEDIA_BUBBLE, enabled)
+
+    fun isIslandMediaBubbleWideEnabled(): Boolean = getBoolean(KEY_ISLAND_MEDIA_BUBBLE_WIDE, false)
+
+    fun setIslandMediaBubbleWideEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_MEDIA_BUBBLE_WIDE, enabled)
+
+    fun isIslandMediaBubbleFillArtEnabled(): Boolean = getBoolean(KEY_ISLAND_MEDIA_BUBBLE_FILL_ART, false)
+
+    fun setIslandMediaBubbleFillArtEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_MEDIA_BUBBLE_FILL_ART, enabled)
+
+    fun getIslandMediaPlayerStyle(): String = getString(KEY_ISLAND_MEDIA_PLAYER_STYLE, null) ?: "default"
+
+    fun setIslandMediaPlayerStyle(style: String) = putString(KEY_ISLAND_MEDIA_PLAYER_STYLE, style)
 
     fun isIslandMediaShowLikeEnabled(): Boolean = getBoolean(KEY_ISLAND_MEDIA_SHOW_LIKE, true)
     fun setIslandMediaShowLikeEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_MEDIA_SHOW_LIKE, enabled)
@@ -4426,13 +4715,12 @@ class SettingsRepository(
     fun isIslandNotifQueueEnabled(): Boolean = isIslandNotifHubEnabled() || getBoolean(KEY_ISLAND_NOTIF_QUEUE, true)
     fun setIslandNotifQueueEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_NOTIF_QUEUE, enabled)
 
-    fun getIslandNotifQueueStyle(): String =
-        if (getString(KEY_ISLAND_NOTIF_QUEUE_STYLE, null) == ISLAND_NOTIF_QUEUE_STYLE_OVERLAP) ISLAND_NOTIF_QUEUE_STYLE_OVERLAP
-        else ISLAND_NOTIF_QUEUE_STYLE_STACK
-    fun setIslandNotifQueueStyle(style: String) = putString(KEY_ISLAND_NOTIF_QUEUE_STYLE, style)
 
-    fun isIslandNotifQueueInlineEnabled(): Boolean = getBoolean(KEY_ISLAND_NOTIF_QUEUE_INLINE, false)
-    fun setIslandNotifQueueInlineEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_NOTIF_QUEUE_INLINE, enabled)
+    fun getIslandSecondaryBubbleSide(): String =
+        if (getString(KEY_ISLAND_SECONDARY_BUBBLE_SIDE, null) == ISLAND_CAMERA_POSITION_RIGHT) ISLAND_CAMERA_POSITION_RIGHT
+        else ISLAND_CAMERA_POSITION_LEFT
+    fun setIslandSecondaryBubbleSide(side: String) = putString(KEY_ISLAND_SECONDARY_BUBBLE_SIDE, side)
+
 
     fun isFaceUnlockBrightnessEnabled(): Boolean = getBoolean(KEY_FACE_UNLOCK_BRIGHTNESS_ENABLED, false)
     fun setFaceUnlockBrightnessEnabled(enabled: Boolean) = putBoolean(KEY_FACE_UNLOCK_BRIGHTNESS_ENABLED, enabled)
@@ -4489,8 +4777,9 @@ class SettingsRepository(
     fun updateIslandNotifFilterAppSelection(packageName: String, enabled: Boolean) =
         updateAppSelection(KEY_ISLAND_NOTIF_FILTER_APPS_LIST, packageName, enabled)
 
-    fun isIslandNotifTapToOpenEnabled(): Boolean = getBoolean(KEY_ISLAND_NOTIF_TAP_TO_OPEN, false)
-    fun setIslandNotifTapToOpenEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_NOTIF_TAP_TO_OPEN, enabled)
+    fun isIslandTapToOpenExpandedEnabled(): Boolean =
+        getBoolean(KEY_ISLAND_TAP_TO_OPEN_EXPANDED, getBoolean(KEY_ISLAND_NOTIF_TAP_TO_OPEN, false))
+    fun setIslandTapToOpenExpandedEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_TAP_TO_OPEN_EXPANDED, enabled)
 
     fun isIslandOtpEnabled(): Boolean = getBoolean(KEY_ISLAND_OTP_ENABLED, false)
     fun setIslandOtpEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_OTP_ENABLED, enabled)
@@ -4512,6 +4801,12 @@ class SettingsRepository(
 
     fun isIslandNotifKeepProgressEnabled(): Boolean = getBoolean(KEY_ISLAND_NOTIF_KEEP_PROGRESS, true)
     fun setIslandNotifKeepProgressEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_NOTIF_KEEP_PROGRESS, enabled)
+
+    fun getIslandLiveUpdatesCount(): Int = getInt(KEY_ISLAND_LIVE_UPDATES_COUNT, 3).coerceIn(1, 3)
+    fun setIslandLiveUpdatesCount(count: Int) = putInt(KEY_ISLAND_LIVE_UPDATES_COUNT, count.coerceIn(1, 3))
+
+    fun isIslandLiveUpdatesExpandedEnabled(): Boolean = getBoolean(KEY_ISLAND_LIVE_UPDATES_EXPANDED, false)
+    fun setIslandLiveUpdatesExpandedEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_LIVE_UPDATES_EXPANDED, enabled)
 
     fun applyHeadsUpSuppression(suppress: Boolean = isIslandEnabled() && isIslandSuppressSystemHeadsUpEnabled()) {
         val targetValue = if (suppress) 0 else 1
@@ -4587,6 +4882,9 @@ class SettingsRepository(
 
     fun isStatusGlanceShowTimeEnabled(): Boolean = getBoolean(KEY_STATUS_GLANCE_SHOW_TIME, true)
     fun setStatusGlanceShowTimeEnabled(enabled: Boolean) = putBoolean(KEY_STATUS_GLANCE_SHOW_TIME, enabled)
+
+    fun isStatusGlanceShowSecondsEnabled(): Boolean = getBoolean(KEY_STATUS_GLANCE_SHOW_SECONDS, false)
+    fun setStatusGlanceShowSecondsEnabled(enabled: Boolean) = putBoolean(KEY_STATUS_GLANCE_SHOW_SECONDS, enabled)
 
     fun isStatusGlanceBackgroundPillEnabled(): Boolean = getBoolean(KEY_STATUS_GLANCE_BACKGROUND_PILL, false)
     fun setStatusGlanceBackgroundPillEnabled(enabled: Boolean) = putBoolean(KEY_STATUS_GLANCE_BACKGROUND_PILL, enabled)
@@ -4681,4 +4979,32 @@ class SettingsRepository(
         } ?: emptyMap()
 
     fun setAppVolumeLevels(levels: Map<String, Float>) = putString(KEY_APP_VOLUME_LEVELS, gson.toJson(levels))
+
+    fun isTextSnippetsEnabled(): Boolean = getBoolean(KEY_TEXT_SNIPPETS_ENABLED, false)
+    fun setTextSnippetsEnabled(enabled: Boolean) {
+        putBoolean(KEY_TEXT_SNIPPETS_ENABLED, enabled)
+    }
+
+    fun getSnippetPrefix(): String = getString(KEY_TEXT_SNIPPETS_PREFIX, ";") ?: ";"
+
+    fun setSnippetPrefix(prefix: String) = putString(KEY_TEXT_SNIPPETS_PREFIX, prefix)
+
+    fun getTextSnippets(): List<Snippet> {
+        cachedSnippets?.let { return it }
+        val json = getString(KEY_TEXT_SNIPPETS_DATA, null) ?: return emptyList<Snippet>().also { cachedSnippets = it }
+        val list =
+            try {
+                val type = object : TypeToken<List<Snippet>>() {}.type
+                gson.fromJson<List<Snippet>>(json, type) ?: emptyList()
+            } catch (_: Exception) {
+                emptyList()
+            }
+        cachedSnippets = list
+        return list
+    }
+
+    fun saveTextSnippets(snippets: List<Snippet>) {
+        cachedSnippets = snippets
+        putString(KEY_TEXT_SNIPPETS_DATA, gson.toJson(snippets))
+    }
 }

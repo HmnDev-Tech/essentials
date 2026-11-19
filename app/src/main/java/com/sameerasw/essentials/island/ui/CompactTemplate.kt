@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.geometry.Size
 import androidx.compose.foundation.shape.CornerSize
@@ -46,6 +47,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.dp
 import com.sameerasw.essentials.island.ui.components.LocalIslandChipInk
 import com.sameerasw.essentials.island.ui.components.LocalIslandIconColor
@@ -56,6 +59,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
+import com.sameerasw.essentials.island.state.CompactSideLimits
 import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.unit.Constraints
 import com.sameerasw.essentials.island.model.CompactCell
@@ -79,12 +83,42 @@ private fun ChipUnit(color: Color, spec: IslandLayoutSpec, startNeighbor: Boolea
                 .defaultMinSize(minWidth = spec.cellSize)
                 .clip(RoundedCornerShape(topStart = startRadius, bottomStart = startRadius, topEnd = endRadius, bottomEnd = endRadius))
                 .background(container)
-                .padding(horizontal = 3.dp),
+                .padding(horizontal = spec.contentGap / 2),
             horizontalArrangement = Arrangement.spacedBy(spec.cellSpacing / 2),
             verticalAlignment = Alignment.CenterVertically,
         ) { content() }
     }
 }
+
+@Composable
+private fun ScaledCell(scale: Float, content: @Composable () -> Unit) {
+    val base = LocalDensity.current
+    Box(Modifier.fitHeight()) {
+        if (scale == 1f) {
+            content()
+        } else {
+            CompositionLocalProvider(LocalDensity provides Density(base.density * scale, base.fontScale / scale)) { content() }
+        }
+    }
+}
+
+private fun Modifier.fitHeight(): Modifier =
+    layout { measurable, c ->
+        val placeable = measurable.measure(c.copy(minHeight = 0, maxHeight = Constraints.Infinity))
+        val limit = c.maxHeight
+        val factor = if (limit != Constraints.Infinity && placeable.height > limit) limit.toFloat() / placeable.height else 1f
+        val width = (placeable.width * factor).roundToInt().coerceIn(c.minWidth, c.maxWidth)
+        val height = (placeable.height * factor).roundToInt().coerceIn(c.minHeight, c.maxHeight)
+        layout(width, height) {
+            val x = (width - placeable.width * factor) / 2f
+            val y = (height - placeable.height * factor) / 2f
+            placeable.placeWithLayer(x.roundToInt(), y.roundToInt()) {
+                scaleX = factor
+                scaleY = factor
+                transformOrigin = TransformOrigin(0f, 0f)
+            }
+        }
+    }
 
 private fun slotChipped(i: Int, beforeSlots: Int, beforeUnits: List<SlotUnit>, afterUnits: List<SlotUnit>): Boolean {
     val unit = if (i < beforeSlots) beforeUnits.getOrNull(beforeSlots - 1 - i) else afterUnits.getOrNull(i - beforeSlots)
@@ -110,11 +144,13 @@ fun CompactTemplate(
     onCellTap: (String) -> Unit,
     onCellLongPress: (String) -> Unit,
     sideBubble: () -> Float = { 0f },
+    bubbleSide: () -> Float = { 0f },
     bubbleExtent: () -> Int = { 0 },
     onSlack: (Int) -> Unit = {},
     onBaseWidth: (Int) -> Unit = {},
     onNeedLeft: (Int) -> Unit = {},
 ) {
+    val cellScale = spec.fontScale.coerceIn(0.8f, 1.3f)
     val iconColor = LocalIslandIconColor.current
     val primary = MaterialTheme.colorScheme.primary
     val cells = buildMap {
@@ -147,6 +183,8 @@ fun CompactTemplate(
 
     val known = remember { HashMap<String, SlotUnit>() }
     (beforeUnits + afterUnits).forEach { known[it.key] = it }
+    val multiPart = (beforeUnits + afterUnits).flatMap { u -> u.cells.map { u.itemKey } }
+        .groupingBy { it }.eachCount().filterValues { it > 1 }.keys
     val settled = remember { booleanArrayOf(false) }
     val lingerBefore = remember { intArrayOf(0) }
     val lingerAfter = remember { intArrayOf(0) }
@@ -207,6 +245,7 @@ fun CompactTemplate(
                 .height(spec.cellSize),
         ) { k ->
             val unit = k?.let { known[it] }
+            val live = k != null && k == target
             if (unit != null) {
                 val tap = Modifier.pointerInput(unit.itemKey) {
                     detectTapGestures(
@@ -214,33 +253,48 @@ fun CompactTemplate(
                         onLongPress = { onCellLongPress(unit.itemKey) },
                     )
                 }
+                val measured = tap.clipToBounds().layout { measurable, c ->
+                    val p = measurable.measure(c.copy(maxWidth = Constraints.Infinity))
+                    if (live) com.sameerasw.essentials.island.state.CompactCellWidths.record(unit.cells.map { it.cell.key }, p.width)
+                    if (p.width > c.maxWidth && c.minWidth == 0) {
+                        layout(0, 0) {}
+                    } else {
+                        val w = p.width.coerceIn(c.minWidth, c.maxWidth)
+                        layout(w, p.height) { p.place(0, 0) }
+                    }
+                }
                 if (unit.chipColor != null) {
-                    Box(tap) {
+                    Box(measured) {
                         val at = units.indexOfFirst { it.key == unit.key }
                         val innerNeighbor = at > 0 && units[at - 1].chipColor != null
                         val outerNeighbor = at >= 0 && units.getOrNull(at + 1)?.chipColor != null
                         ChipUnit(unit.chipColor, spec, startNeighbor = if (before) outerNeighbor else innerNeighbor, endNeighbor = if (before) innerNeighbor else outerNeighbor) {
-                            unit.cells.forEach { member ->
+                            unit.cells.forEachIndexed { memberIndex, member ->
                                 Box(
                                     modifier = Modifier
                                         .height(spec.cellSize)
                                         .then(
                                             if (member.cell.key.endsWith(".art") || member.cell.key.endsWith(".avatar")) {
                                                 Modifier
+                                            } else if (unit.itemKey in multiPart || unit.cells.size > 1) {
+                                                Modifier.padding(
+                                                    start = if (memberIndex == 0) spec.contentGap * 2 / 3 else 0.dp,
+                                                    end = if (memberIndex == unit.cells.lastIndex) spec.contentGap * 2 / 3 else 0.dp,
+                                                )
                                             } else {
-                                                Modifier.defaultMinSize(minWidth = spec.cellSize).padding(horizontal = 4.dp)
+                                                Modifier.defaultMinSize(minWidth = spec.cellSize).padding(horizontal = spec.contentGap * 2 / 3)
                                             },
                                         ),
                                     contentAlignment = Alignment.Center,
-                                ) { member.cell.content() }
+                                ) { ScaledCell(cellScale) { member.cell.content() } }
                             }
                         }
                     }
                 } else {
                     Box(
-                        modifier = tap.height(spec.cellSize).defaultMinSize(minWidth = spec.cellSize),
+                        modifier = if (unit.itemKey in multiPart) measured.height(spec.cellSize) else measured.height(spec.cellSize).defaultMinSize(minWidth = spec.cellSize),
                         contentAlignment = Alignment.Center,
-                    ) { unit.cells[0].cell.content() }
+                    ) { ScaledCell(cellScale) { unit.cells[0].cell.content() } }
                 }
             }
         }
@@ -254,22 +308,66 @@ fun CompactTemplate(
             SideEffect { settled[0] = true }
         },
     ) { measurables, constraints ->
-        val loose = Constraints(maxHeight = constraints.maxHeight)
-        val placeables = measurables.map { it.measure(loose) }
-        val chipPlaceables = placeables.filterIndexed { i, _ -> slotChipped(i, beforeSlots, beforeUnits, afterUnits) }.toSet()
         val spacing = spec.cellSpacing.roundToPx()
         val cameraSlot = spec.cameraSlotWidth.roundToPx()
+        val limitLeft = CompactSideLimits.left.intValue
+        val limitRight = CompactSideLimits.right.intValue
+        val reserve = spacing + spec.edgeInset.roundToPx()
+        val bubbleNow = if (state.sideBubble != null) bubbleExtent().coerceAtLeast(0) else 0
+        com.sameerasw.essentials.island.state.CompactCellWidths.bubbleExtent =
+            if (state.sideBubble != null) maxOf(bubbleNow, com.sameerasw.essentials.island.state.CompactCellWidths.bubbleExtent) else 0
+        val side = if (spec.growDirection == 0) bubbleSide().coerceIn(0f, 1f) else 0f
+        val bubbleOnRight = side >= 0.5f
+        val hubReserve = state.sideBubble?.let { hub ->
+            minOf(bubbleNow, (spec.compactHeight.toPx() * overlapMinFactor(hub.icons)).roundToInt() + spec.contentGap.roundToPx())
+        } ?: bubbleExtent().coerceAtLeast(0)
+        fun bodyLimit(limit: Int) = if (limit == Int.MAX_VALUE) limit else (limit - hubReserve).coerceAtLeast(0)
+        val bodyLimitLeft = if (bubbleOnRight) limitLeft else bodyLimit(limitLeft)
+        val bodyLimitRight = if (bubbleOnRight) bodyLimit(limitRight) else limitRight
+        val measuredSlots = arrayOfNulls<Placeable>(measurables.size)
+        fun measureBudgeted(order: List<Int>, limit: Int) {
+            var budget = if (limit == Int.MAX_VALUE) Int.MAX_VALUE else (limit - reserve).coerceAtLeast(0)
+            order.forEach { i ->
+                val max = if (budget == Int.MAX_VALUE) Constraints.Infinity else budget
+                val p = measurables[i].measure(Constraints(maxWidth = max, maxHeight = constraints.maxHeight))
+                measuredSlots[i] = p
+                if (budget != Int.MAX_VALUE && p.width > 0) budget = (budget - p.width - spacing).coerceAtLeast(0)
+            }
+        }
+        val all = measurables.indices.toList()
+        when {
+            cameraSlot == 0 -> measureBudgeted(all, Int.MAX_VALUE)
+            spec.growDirection > 0 -> measureBudgeted(all, limitRight)
+            spec.growDirection < 0 -> measureBudgeted(all.reversed(), limitLeft)
+            else -> {
+                measureBudgeted((beforeCount - 1 downTo 0).toList(), bodyLimitLeft)
+                measureBudgeted((beforeCount until measurables.size).toList(), bodyLimitRight)
+            }
+        }
+        val placeables = measuredSlots.map { it!! }
+        val chipPlaceables = placeables.filterIndexed { i, _ -> slotChipped(i, beforeSlots, beforeUnits, afterUnits) }.toSet()
         val left = placeables.take(beforeCount).filter { it.width > 0 }
         val right = placeables.drop(beforeCount).filter { it.width > 0 }
         val chipGap = 2.dp.roundToPx()
-        fun gapAfter(list: List<Placeable>, i: Int) =
-            if (i < list.lastIndex && list[i] in chipPlaceables && list[i + 1] in chipPlaceables) chipGap else spacing
+        val itemOf = HashMap<Placeable, String>()
+        placeables.forEachIndexed { i, p ->
+            val unit = if (i < beforeSlots) beforeUnits.getOrNull(beforeSlots - 1 - i) else afterUnits.getOrNull(i - beforeSlots)
+            if (unit != null) itemOf[p] = unit.itemKey
+        }
+        val siblingGap = spacing / 2
+        fun gapAfter(list: List<Placeable>, i: Int) = when {
+            i >= list.lastIndex -> spacing
+            list[i] in chipPlaceables && list[i + 1] in chipPlaceables -> chipGap
+            itemOf[list[i]] != null && itemOf[list[i]] == itemOf[list[i + 1]] -> siblingGap
+            else -> spacing
+        }
         fun content(list: List<Placeable>) = if (list.isEmpty()) 0 else list.sumOf { it.width } + list.indices.sumOf { if (it < list.lastIndex) gapAfter(list, it) else 0 }
         val height = spec.compactHeight.roundToPx()
         
         val squareCell = spec.cellSize.roundToPx()
-        val opticalInset = (height * OPTICAL_INSET_RATIO).toInt()
-        fun edgeInset(outer: Placeable?) = if (outer != null && outer.width > squareCell && outer !in chipPlaceables) opticalInset else 0
+        val opticalInset = spec.edgeInset.roundToPx()
+        fun edgeInset(outer: Placeable?) =
+            if (outer != null && outer !in chipPlaceables && (outer.width > squareCell || itemOf[outer] in multiPart)) opticalInset else 0
         if (cameraSlot == 0) {
             val cells = left + right
             onSlack(if (spec.balanceCompact) bubbleExtent().coerceAtLeast(0) else 0)
@@ -310,16 +408,18 @@ fun CompactTemplate(
         val edge = if (hasCells) spacing else 0
         val needLeft = content(left) + leftInset + edge
         val needRight = content(right) + rightInset + edge
-        val t = if (hasCells) sideBubble().coerceIn(0f, 1f) else 0f
+        val t = if (!hasCells) 0f else if (spec.balanceCompact) sideBubble().coerceIn(0f, 1f) else 1f
         val mirrored = maxOf(needLeft, needRight)
         val extent = if (spec.balanceCompact) bubbleExtent().coerceAtLeast(0) else 0
-        val balancedLeft = if (spec.balanceCompact) maxOf(needLeft, needRight - extent) else needLeft
-        val balancedRight = if (spec.balanceCompact) balancedLeft + extent else needRight
+        val leftNear = maxOf(needLeft, needRight - extent)
+        val rightNear = maxOf(needRight, needLeft - extent)
+        val balancedLeft = if (spec.balanceCompact) leftNear + (rightNear + extent - leftNear) * side else needLeft.toFloat()
+        val balancedRight = if (spec.balanceCompact) leftNear + extent + (rightNear - leftNear - extent) * side else needRight.toFloat()
         onSlack(if (spec.balanceCompact) extent else needRight - needLeft)
-        val leftSide = (mirrored + (balancedLeft - mirrored) * t).roundToInt()
-        val rightSide = (mirrored + (balancedRight - mirrored) * t).roundToInt()
-        onBaseWidth(mirrored * 2 + cameraSlot)
-        onNeedLeft(needLeft)
+        val leftSide = (mirrored + (balancedLeft - mirrored) * t).roundToInt().coerceAtMost(bodyLimitLeft)
+        val rightSide = (mirrored + (balancedRight - mirrored) * t).roundToInt().coerceAtMost(bodyLimitRight)
+        onBaseWidth(minOf(mirrored, bodyLimitLeft, bodyLimitRight) * 2 + cameraSlot)
+        onNeedLeft(if (bubbleOnRight) needRight else needLeft)
         val width = leftSide + rightSide + cameraSlot
         layout(width, height) {
             var x = spacing + leftInset

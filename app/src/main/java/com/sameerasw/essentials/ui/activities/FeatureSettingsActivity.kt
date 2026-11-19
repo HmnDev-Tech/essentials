@@ -9,6 +9,7 @@
 
 package com.sameerasw.essentials
 
+import com.sameerasw.essentials.translation.TranslatableText
 import com.sameerasw.essentials.ui.navigation.LocalSelectedFeatureIds
 import androidx.fragment.app.FragmentActivity
 import android.content.Intent
@@ -68,6 +69,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sameerasw.essentials.domain.HapticFeedbackType
+import com.sameerasw.essentials.domain.model.Snippet
 import com.sameerasw.essentials.domain.registry.FeatureRegistry
 import com.sameerasw.essentials.ui.components.EssentialsFloatingToolbar
 import com.sameerasw.essentials.ui.components.animations.LottieFeatureAnimation
@@ -94,6 +96,8 @@ import com.sameerasw.essentials.ui.features.display.AodWallpaperSettingsUI
 import com.sameerasw.essentials.ui.features.display.DuoSettingsUI
 import com.sameerasw.essentials.ui.features.display.ISLAND_BEHAVIOR_FEATURE_ID
 import com.sameerasw.essentials.ui.features.display.ISLAND_DURATION_FEATURE_ID
+import com.sameerasw.essentials.ui.features.display.ISLAND_INTERACTIONS_FEATURE_ID
+import com.sameerasw.essentials.ui.features.display.IslandInteractionsSettingsUI
 import com.sameerasw.essentials.ui.features.display.ISLAND_NOTIFICATIONS_FEATURE_ID
 import com.sameerasw.essentials.ui.features.display.ISLAND_PLACEMENT_FEATURE_ID
 import com.sameerasw.essentials.ui.features.display.ISLAND_SUB_PAGE_IDS
@@ -136,6 +140,7 @@ import com.sameerasw.essentials.ui.features.system.ScreenLockedSecuritySettingsU
 import com.sameerasw.essentials.ui.features.system.ScreenOffWidgetSettingsUI
 import com.sameerasw.essentials.ui.features.system.ShutUpSettingsUI
 import com.sameerasw.essentials.ui.features.system.SnoozeNotificationsSettingsUI
+import com.sameerasw.essentials.ui.features.system.SnippetsSettingsUI
 import com.sameerasw.essentials.ui.features.system.SoundModeTileSettingsUI
 import com.sameerasw.essentials.ui.features.system.StandbyAppsSettingsUI
 import com.sameerasw.essentials.ui.features.system.StatusBarIconSettingsUI
@@ -267,6 +272,8 @@ fun FeatureSettingsScreen(
             var standbyAppsSelectedPackages by remember { mutableStateOf(setOf<String>()) }
             var activityLauncherQuery by remember { mutableStateOf("") }
             var isStandbyMoveSheetVisible by remember { mutableStateOf(false) }
+            var isAddSnippetSheetVisible by remember { mutableStateOf(false) }
+            var editingSnippet by remember { mutableStateOf<Snippet?>(null) }
 
             val isAccessibilityEnabled by viewModel.isAccessibilityEnabled
             val isWriteSecureSettingsEnabled by viewModel.isWriteSecureSettingsEnabled
@@ -381,6 +388,7 @@ fun FeatureSettingsScreen(
                                 !isWriteSecureSettingsEnabled
                         "Smart pixels" -> !isAccessibilityEnabled
                         "Duo", "Status glance" -> !isAccessibilityEnabled
+                        "Island" -> !isAccessibilityEnabled
                         "AOD wallpaper" -> !isAccessibilityEnabled || !viewModel.isStoragePermissionGranted.value
                         "Snooze system notifications" -> !isNotificationListenerEnabled
                         "Screen locked security" ->
@@ -426,6 +434,7 @@ fun FeatureSettingsScreen(
 
                         "Shut-Up!" -> !isWriteSecureSettingsEnabled || !viewModel.isUsageStatsPermissionGranted.value
                         "Power and Battery" -> !isWriteSecureSettingsEnabled
+                        "Text Snippets" -> !isAccessibilityEnabled
                         "Networks" ->
                             !isWriteSecureSettingsEnabled &&
                                 !com.sameerasw.essentials.utils.ShellUtils.hasPermission(
@@ -502,6 +511,11 @@ fun FeatureSettingsScreen(
             }
 
             ShakeForHelp(feature = featureObj, viewModel = viewModel)
+
+            var showWhatIsThis by remember { mutableStateOf(false) }
+            if (showWhatIsThis) {
+                com.sameerasw.essentials.ui.core.sheets.FeatureHelpSheet(featureObj, viewModel) { showWhatIsThis = false }
+            }
 
             val pageTitle =
                 if (featureObj != null) stringResource(featureObj.title) else featureId
@@ -724,6 +738,7 @@ fun FeatureSettingsScreen(
                                                     "Navigation",
                                                     "Link actions",
                                                     "System Keyboard",
+                                                    "Text Snippets",
                                                 ),
                                             )
 
@@ -796,8 +811,8 @@ fun FeatureSettingsScreen(
 
                         sectionChildLists.forEach { sectionChildren ->
                             if (featureId == "Watch" && sectionChildren.any { it.id == "Calendar Sync" }) {
-                                Text(
-                                    text = stringResource(R.string.cat_sync),
+                                TranslatableText(
+                                    stringResId = R.string.cat_sync,
                                     style = MaterialTheme.typography.titleMedium,
                                     modifier = Modifier.padding(start = 32.dp, top = 24.dp, bottom = 4.dp),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -828,12 +843,14 @@ fun FeatureSettingsScreen(
                                                     "Watch Wireless Debugging" -> android.os.Build.VERSION.SDK_INT >= 37 && !viewModel.isLocalNetworkGranted.value
                                                     "Lock screen shortcuts" -> !isAccessibilityEnabled
                                                     "Volume steps" -> !isAccessibilityEnabled
+                                                    "Text Snippets" -> !isAccessibilityEnabled
                                                     "App volume" -> !isAccessibilityEnabled || !isShizukuPermissionGranted
                                                     "Dynamic night light" ->
                                                         (if (viewModel.isUseUsageAccess.value) !viewModel.isUsageStatsPermissionGranted.value else !isAccessibilityEnabled) ||
                                                             !isWriteSecureSettingsEnabled
                                                     "Smart pixels" -> !isAccessibilityEnabled
                                                     "Duo", "Status glance" -> !isAccessibilityEnabled
+                                                    "Island" -> !isAccessibilityEnabled
                                                     "AOD wallpaper" -> !isAccessibilityEnabled || !viewModel.isStoragePermissionGranted.value
                                                     "Snooze system notifications" -> !isNotificationListenerEnabled
                                                     "Screen locked security" ->
@@ -1228,6 +1245,17 @@ fun FeatureSettingsScreen(
                                 )
                             }
 
+                            "Text Snippets" -> {
+                                SnippetsSettingsUI(
+                                    viewModel = viewModel,
+                                    modifier = Modifier.padding(top = 16.dp),
+                                    isAddSheetVisible = isAddSnippetSheetVisible,
+                                    onAddSheetVisibleChange = { isAddSnippetSheetVisible = it },
+                                    editingSnippet = editingSnippet,
+                                    onEditingSnippetChange = { editingSnippet = it },
+                                )
+                            }
+
                             "Batteries" -> {
                                 BatteriesSettingsUI(
                                     viewModel = viewModel,
@@ -1348,6 +1376,14 @@ fun FeatureSettingsScreen(
 
                             ISLAND_BEHAVIOR_FEATURE_ID -> {
                                 IslandBehaviorSettingsUI(
+                                    viewModel = viewModel,
+                                    modifier = Modifier.padding(top = 16.dp),
+                                    highlightSetting = highlightSetting,
+                                )
+                            }
+
+                            ISLAND_INTERACTIONS_FEATURE_ID -> {
+                                IslandInteractionsSettingsUI(
                                     viewModel = viewModel,
                                     modifier = Modifier.padding(top = 16.dp),
                                     highlightSetting = highlightSetting,
@@ -1486,6 +1522,12 @@ fun FeatureSettingsScreen(
                             }
                         }
                     }
+                    if (featureObj != null && hasScroll) {
+                        com.sameerasw.essentials.ui.core.sheets.WhatIsThisButton(
+                            onClick = { showWhatIsThis = true },
+                            modifier = Modifier.padding(top = 24.dp),
+                        )
+                    }
                     // Bottom padding for toolbar
                     if (featureId != "Quick settings tiles" && featureId != "Location reached") {
                         androidx.compose.foundation.layout.Spacer(
@@ -1521,6 +1563,7 @@ fun FeatureSettingsScreen(
                                 when {
                                     isStandbyMultiSelecting -> R.drawable.rounded_mobiledata_arrows_24
                                     (featureId == "Island" || featureId in ISLAND_SUB_PAGE_IDS) -> R.drawable.rounded_play_arrow_24
+                                    featureId == "Text Snippets" -> R.drawable.rounded_add_24
                                     else -> null
                                 },
                             fabAction =
@@ -1531,12 +1574,19 @@ fun FeatureSettingsScreen(
                                             viewModel.triggerIslandPreview(context)
                                         }
                                     }
+                                    featureId == "Text Snippets" -> {
+                                        {
+                                            editingSnippet = null
+                                            isAddSnippetSheetVisible = true
+                                        }
+                                    }
                                     else -> null
                                 },
                             fabContentDescription =
                                 when {
                                     isStandbyMultiSelecting -> stringResource(R.string.action_move_bucket)
                                     (featureId == "Island" || featureId in ISLAND_SUB_PAGE_IDS) -> stringResource(R.string.action_preview)
+                                    featureId == "Text Snippets" -> stringResource(R.string.snippets_dialog_new_title)
                                     else -> null
                                 },
                             onHelpClick =

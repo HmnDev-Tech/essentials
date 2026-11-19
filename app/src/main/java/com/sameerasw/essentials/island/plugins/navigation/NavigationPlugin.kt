@@ -23,8 +23,11 @@ import com.sameerasw.essentials.island.plugins.launchPackage
 import com.sameerasw.essentials.island.plugins.sendPendingIntent
 import com.sameerasw.essentials.island.ui.components.IslandBitmap
 import com.sameerasw.essentials.island.ui.components.IslandIcon
+import com.sameerasw.essentials.island.ui.components.LocalIslandChipInk
 import com.sameerasw.essentials.island.ui.components.RollingText
 import com.sameerasw.essentials.services.NotificationListener
+import com.sameerasw.essentials.utils.AppUtil
+import com.sameerasw.essentials.utils.CarConnectionMonitor
 
 class NavigationPlugin : BaseIslandPlugin() {
     override val id = "navigation"
@@ -34,13 +37,21 @@ class NavigationPlugin : BaseIslandPlugin() {
         SettingsRepository.KEY_ISLAND_NAVIGATION_ON_NEW,
         SettingsRepository.KEY_ISLAND_NAVIGATION_PEEK_AFTER_EXPAND,
         SettingsRepository.KEY_ISLAND_NAVIGATION_EXPAND_DISTANCE,
+        SettingsRepository.KEY_ISLAND_NAVIGATION_HIDE_WHILE_DRIVING,
     )
+
+    private val carListener: (Boolean) -> Unit = { ctx?.mainHandler?.post { refresh() } }
 
     private var data: NavigationNotificationData? = null
 
     private val trigger = NavigationTrigger()
 
     private val endRoute = Runnable { trigger.reset() }
+
+    private val clearData = Runnable {
+        data = null
+        render()
+    }
 
     private val endExpand = Runnable {
         val c = ctx ?: return@Runnable
@@ -63,13 +74,16 @@ class NavigationPlugin : BaseIslandPlugin() {
 
     override fun onStart() {
         NotificationListener.addNavigationNotificationListener(listener)
+        CarConnectionMonitor.addListener(carListener)
     }
 
     override fun onStop() {
         NotificationListener.removeNavigationNotificationListener(listener)
+        CarConnectionMonitor.removeListener(carListener)
         ctx?.mainHandler?.removeCallbacks(endExpand)
         ctx?.mainHandler?.removeCallbacks(peekAfterCollapse)
         ctx?.mainHandler?.removeCallbacks(endRoute)
+        ctx?.mainHandler?.removeCallbacks(clearData)
         data = null
         endRoute.run()
     }
@@ -84,15 +98,20 @@ class NavigationPlugin : BaseIslandPlugin() {
         val c = ctx ?: return
         val stable = stabilized(next)
         val turned = stable?.instruction != null && stable.instruction != data?.instruction
-        data = stable
-        render()
         if (stable == null) {
+            if (data != null) {
+                c.mainHandler.removeCallbacks(clearData)
+                c.mainHandler.postDelayed(clearData, CLEAR_GRACE_MS)
+            }
             c.mainHandler.removeCallbacks(endExpand)
             c.mainHandler.removeCallbacks(peekAfterCollapse)
             c.mainHandler.removeCallbacks(endRoute)
             c.mainHandler.postDelayed(endRoute, ROUTE_GRACE_MS)
             return
         }
+        c.mainHandler.removeCallbacks(clearData)
+        data = stable
+        render()
         c.mainHandler.removeCallbacks(endRoute)
         if (!enabled()) return
         val focused = c.focusedKey()
@@ -127,7 +146,8 @@ class NavigationPlugin : BaseIslandPlugin() {
         c.mainHandler.postDelayed(endExpand, EXPANDED_MS)
     }
 
-    private fun enabled() = settings.isIslandShowNavigationEnabled()
+    private fun enabled() = settings.isIslandShowNavigationEnabled() &&
+        !(settings.isIslandNavigationHideWhileDrivingEnabled() && AppUtil.isAndroidAutoRunning(context))
 
     private fun render() {
         val d = data
@@ -156,10 +176,10 @@ class NavigationPlugin : BaseIslandPlugin() {
                         onOpen = { open(d) },
                         onExit = d.exitIntent?.let { intent ->
                             {
-                                sendPendingIntent(
-                                    context,
-                                    intent
-                                )
+                                if (sendPendingIntent(context, intent)) {
+                                    ctx?.mainHandler?.removeCallbacks(clearData)
+                                    clearData.run()
+                                }
                             }
                         },
                         scope = scope,
@@ -181,13 +201,14 @@ class NavigationPlugin : BaseIslandPlugin() {
         private const val EXPANDED_MS = 6_000L
         private const val COLLAPSE_ANIM_MS = 600L
         private const val ROUTE_GRACE_MS = 60_000L
+        private const val CLEAR_GRACE_MS = 2_500L
     }
 }
 
 @Composable
 internal fun Maneuver(d: NavigationNotificationData, size: Int) {
     if (d.maneuver != null) {
-        IslandBitmap(d.maneuver, size.dp, fallbackRes = R.drawable.round_navigation_24)
+        IslandBitmap(d.maneuver, size.dp, fallbackRes = R.drawable.round_navigation_24, tint = LocalIslandChipInk.current)
     } else {
         IslandIcon(
             R.drawable.round_navigation_24,
@@ -233,7 +254,7 @@ internal class NavigationTrigger {
                 Action.Expand
             }
             !announce -> Action.None
-            onNew == SettingsRepository.ISLAND_NAVIGATION_ON_NEW_EXPAND && canExpand -> Action.Expand
+            (onNew == SettingsRepository.ISLAND_NAVIGATION_ON_NEW_EXPAND || (onNew == SettingsRepository.ISLAND_NAVIGATION_ON_NEW_PEEK && !canPeek)) && canExpand -> Action.Expand
             onNew == SettingsRepository.ISLAND_NAVIGATION_ON_NEW_PEEK && canPeek -> Action.Peek
             else -> Action.None
         }
