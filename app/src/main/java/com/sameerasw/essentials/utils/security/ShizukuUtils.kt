@@ -13,6 +13,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.IBinder
 import android.os.RemoteException
+import com.sameerasw.essentials.EssentialsApp
 import moe.shizuku.server.IShizukuService
 import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuProvider

@@ -13,6 +13,7 @@ import android.content.Context
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import com.sameerasw.essentials.EssentialsApp
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuBinderWrapper
@@ -536,7 +537,8 @@ object FreezeManager {
         }
     }
 
-    private fun getSuspenderPackage(): String = if (Shizuku.getUid() == 0) context.packageName else "com.android.shell"
+    private fun getSuspenderPackage(): String =
+        if (Shizuku.getUid() == 0) EssentialsApp.context.packageName else "com.android.shell"
 
     private fun getUserId(): Int =
         try {
